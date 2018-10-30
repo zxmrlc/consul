@@ -60,9 +60,12 @@ func (s *snapshot) persistNodes(sink raft.SnapshotSink,
 	for node := nodes.Next(); node != nil; node = nodes.Next() {
 		n := node.(*structs.Node)
 		req := structs.RegisterRequest{
+			ID:              n.ID,
 			Node:            n.Node,
+			Datacenter:      n.Datacenter,
 			Address:         n.Address,
 			TaggedAddresses: n.TaggedAddresses,
+			NodeMeta:        n.Meta,
 		}
 
 		// Register the node itself

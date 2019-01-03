@@ -412,11 +412,27 @@ and consider if they're appropriate for your deployment.
       The name of the private key for the certificate file within the
       `secretName` secret.
 
-## Customizing the Helm Chart
+## Helm Chart Examples
 
-Given the wide variety of use cases, it won't be possible to support every
-configuration option in the Helm chart's `values.yaml` file without making
-it difficult to understand and use. For additional
-flexibility in changing values that aren't listed above, consider using
-third-party tools such as [kustomize](https://github.com/kubernetes-sigs/kustomize)
-and [ship](https://github.com/replicatedhq/ship).
+To get started using `values.yaml`, we would like to provide a couple examples.
+The first is for configuring Consul Connect. In this example we have setup auto-retry 
+join, ....
+
+```yml
+client: |
+  join: 127.10.10.1
+syncCatalog: |
+  enabled: true
+```
+
+The second example is for configuring external Consul services. In this example ...
+
+```yml
+```
+
+#### Customizing the Helm Chart
+
+Consul within Kuberentes is highly configiurable, which can create a large and unmanageable
+`values.yaml` file with dozens or more configuration options set. This is especially problematic 
+in production. Therefor, for more flexibility we recommend 
+using a third-party tool, such as [kustomize](https://github.com/kubernetes-sigs/kustomize) or [ship](https://github.com/replicatedhq/ship).

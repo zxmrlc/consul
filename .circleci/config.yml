@@ -95,6 +95,8 @@ jobs:
       - attach_workspace:
           at: /go/bin
       - run: mkdir -p $TEST_RESULTS
+      - run: sudo apt-get update && sudo apt-get install -y rsyslog
+      - run: sudo service rsyslog start
       # Use CircleCI test splitting by classname. Since there are no classes in go,
       # we fake it by taking everything after github.com/hashicorp/consul/ and setting
       # it as the classname.
@@ -111,8 +113,8 @@ jobs:
       - run:
           command: |
             for file in $(ls $TEST_RESULTS/*.xml); do
-              classname=$(echo $file | cut -f 1 -d '.' | sed "s#_#/#g")
-              sed -i "s#classname=\"[^\"]*\"#classname=\"$classname\"#g" $file
+              classname=$(basename $file | cut -f 1 -d '.' | sed "s#_#/#g")
+              sed -i "s#classname=\"[^\"]*\"#classname=\"github.com/hashicorp/$classname\"#g" $file
             done
           when:
             always

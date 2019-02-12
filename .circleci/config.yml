@@ -7,6 +7,7 @@ executors:
       - image: circleci/golang:1.11.4
     environment:
       - TEST_RESULTS: /tmp/test-results  # path to where test results are saved
+    working_directory: /go/src/github.com/hashicorp/consul
 
 # reusable 'commands' to be added as a step in jobs
 commands:
@@ -62,7 +63,6 @@ commands:
 jobs:
   dev-build:
     executor: go
-    working_directory: /go/src/github.com/hashicorp/consul
     steps:
       - checkout
       - run: make dev
@@ -77,13 +77,58 @@ jobs:
           paths:
             - consul
 
+  go-fmt-and-vet:
+    executor: go
+    steps:
+      - checkout
+      - run: go fmt ./...
+      - run: go vet ./...
+
+  go-test:
+    executor: go
+    parallelism: 4
+    environment:
+      TEST_RESULTS: /tmp/test-results
+      GOTAGS: '' # No tags for OSS but there are for enterprise
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /go/bin
+      - run: mkdir -p $TEST_RESULTS
+      # Use CircleCI test splitting by classname. Since there are no classes in go,
+      # we fake it by taking everything after github.com/hashicorp/consul/ and setting
+      # it as the classname.
+
+      # This first loop writes go test results to <reportname>.xml per go package
+      - run: |
+          for pkg in $(go list ./... | circleci tests split --split-by=timings --timings-type=classname | tr '\n' ' '); do
+            reportname=$(echo $pkg | cut -d '/' -f3- | sed "s#/#_#g")
+            gotestsum --format=short-verbose --junitfile $TEST_RESULTS/$reportname.xml -- -tags=$GOTAGS $pkg
+          done
+
+      # This loop goes through all the test result files and renames classname for
+      # CircleCI's test metadata according to the filename (package) the test was in.
+      - run:
+          command: |
+            for file in $(ls $TEST_RESULTS/*.xml); do
+              classname=$(echo $file | cut -f 1 -d '.' | sed "s#_#/#g")
+              sed -i "s#classname=\"[^\"]*\"#classname=\"$classname\"#g" $file
+            done
+          when:
+            always
+
+      - store_test_results:
+          path: /tmp/test-results
+      - store_artifacts:
+          path: /tmp/test-results
+
   # Nomad 0.8 builds on go0.10
   # Run integration tests on nomad/v0.8.7
   nomad-integration-0_8:
       docker:
         - image: circleci/golang:1.10
       environment:
-        - TEST_RESULTS: /tmp/test-results
+        TEST_RESULTS: /tmp/test-results
       steps:
         - integration-test:
             version: v0.8.7
@@ -191,13 +236,17 @@ jobs:
 
 workflows:
   version: 2
-  test-apis:
+  tests:
     jobs:
       - dev-build
+      - go-fmt-and-vet
       - nomad-integration-master:
           requires:
             - dev-build 
       - nomad-integration-0_8:
+          requires:
+            - dev-build
+      - go-test:
           requires:
             - dev-build
   website:

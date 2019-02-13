@@ -241,29 +241,29 @@ workflows:
   tests:
     jobs:
       - dev-build
-      - go-fmt-and-vet
-      - nomad-integration-master:
-          requires:
-            - dev-build 
-      - nomad-integration-0_8:
-          requires:
-            - dev-build
+      # - go-fmt-and-vet
+      # - nomad-integration-master:
+      #     requires:
+      #       - dev-build 
+      # - nomad-integration-0_8:
+      #     requires:
+      #       - dev-build
       - go-test:
           requires:
             - dev-build
-  website:
-    jobs:
-      - build-website:
-          context: static-sites
-          filters:
-            branches:
-              only: stable-website
-  frontend:
-    jobs:
-      - frontend-cache
-      - ember-build:
-          requires:
-            - frontend-cache
-      - ember-test:
-          requires:
-            - ember-build
+  # website:
+  #   jobs:
+  #     - build-website:
+  #         context: static-sites
+  #         filters:
+  #           branches:
+  #             only: stable-website
+  # frontend:
+  #   jobs:
+  #     - frontend-cache
+  #     - ember-build:
+  #         requires:
+  #           - frontend-cache
+  #     - ember-test:
+  #         requires:
+  #           - ember-build

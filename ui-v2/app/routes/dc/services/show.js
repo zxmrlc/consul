@@ -5,13 +5,20 @@ import { get } from '@ember/object';
 
 export default Route.extend({
   repo: service('repository/service'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
-  model: function(params) {
+  // queryParams: {
+  //   s: {
+  //     as: 'filter',
+  //     replace: true,
+  //   },
+  // },
+  model: function(params, transition) {
+    const parent = transition.targetName
+      .split('.')
+      .slice(0, -1)
+      .join('.');
+    this.controllerFor(parent).setProperties({
+      hasOutlet: true,
+    });
     const repo = get(this, 'repo');
     return hash({
       item: repo.findBySlug(params.name, this.modelFor('dc').dc.Name),

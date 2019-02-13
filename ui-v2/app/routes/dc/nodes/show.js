@@ -12,12 +12,12 @@ const tomography = tomographyFactory(distance);
 export default Route.extend(WithBlockingActions, {
   repo: service('repository/node'),
   sessionRepo: service('repository/session'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  // queryParams: {
+  //   s: {
+  //     as: 'filter',
+  //     replace: true,
+  //   },
+  // },
   model: function(params) {
     const dc = this.modelFor('dc').dc.Name;
     const repo = get(this, 'repo');

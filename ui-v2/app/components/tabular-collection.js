@@ -139,10 +139,12 @@ export default CollectionComponent.extend(SlotsMixin, WithResizing, {
       const rect = $tbody.getBoundingClientRect();
       const $footer = dom.element('footer[role="contentinfo"]');
       const space = rect.top + $footer.clientHeight + border;
-      const height = e.detail.height - space;
-      this.set('height', Math.max(0, height));
+      if (typeof e.detail.height !== 'undefined') {
+        const height = e.detail.height - space;
+        this.set('height', Math.max(0, height));
+      }
       // TODO: The row height should auto calculate properly from the CSS
-      this['cell-layout'] = new ZIndexedGrid($appContent.clientWidth, 50);
+      this['cell-layout'] = new ZIndexedGrid(this.element.clientWidth, 50);
       this.updateItems();
       this.updateScrollPosition();
     }

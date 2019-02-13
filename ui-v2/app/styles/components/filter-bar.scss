@@ -7,6 +7,7 @@
 %filter-bar [role='radiogroup'] {
   @extend %expanded-single-select;
 }
+
 %filter-bar .value-passing span {
   @extend %with-passing;
 }
@@ -30,4 +31,32 @@
 }
 %filter-bar .value-critical span {
   @extend %with-critical;
+}
+
+%filter-bar#{$--horizontal-filters} {
+  @extend %filter-bar-horizontal;
+}
+%filter-bar#{$--lt-horizontal-filters} {
+  @extend %filter-bar-vertical;
+}
+%filter-bar#{$--horizontal-selects} [role='radiogroup'] {
+  @extend %expanded-single-select-horizontal;
+}
+%filter-bar#{$--horizontal-selects} label:not(:last-child) {
+  border-right: $decor-border-100;
+}
+%filter-bar#{$--lt-horizontal-selects} label:not(:last-child) {
+  border-bottom: $decor-border-100;
+}
+%two-pane-pane#{$--horizontal-selects} [for='toolbar-toggle'] {
+  display: none;
+}
+%two-pane-pane#{$--lt-horizontal-selects} header h1 {
+  display: inline-block;
+}
+%two-pane-pane#{$--lt-horizontal-selects} #toolbar-toggle + * {
+  display: none;
+}
+%two-pane-pane#{$--lt-horizontal-selects} #toolbar-toggle:checked + * {
+  display: block;
 }

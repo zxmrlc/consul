@@ -1,11 +1,10 @@
-@media #{$--horizontal-selects} {
-  %expanded-single-select {
-    display: flex;
-  }
-  %expanded-single-select label {
-    flex-grow: 1;
-  }
+%expanded-single-select-horizontal {
+  display: flex;
 }
+%expanded-single-select-horizontal label {
+  flex-grow: 1;
+}
+
 %expanded-single-select input[type='radio'] {
   display: none;
 }

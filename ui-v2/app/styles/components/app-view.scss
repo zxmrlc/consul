@@ -4,7 +4,7 @@
 main {
   @extend %app-view;
 }
-%app-view > div > div {
+%app-view > div > div > div {
   @extend %app-content;
 }
 %app-view header form {

@@ -5,13 +5,21 @@ import { get } from '@ember/object';
 
 export default Route.extend({
   repo: service('repository/service'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
+  // queryParams: {
+  //   s: {
+  //     as: 'filter',
+  //     replace: true,
+  //   },
+  // },
+  actions: {
+    willTransition: function(transition) {
+      this.controller.setProperties({
+        hasOutlet: transition.targetName.indexOf('.index') === -1,
+      });
     },
   },
-  model: function(params) {
+  model: function(params, transition) {
+    console.log('Route index twice');
     const repo = get(this, 'repo');
     return hash({
       items: repo.findAllByDatacenter(this.modelFor('dc').dc.Name),

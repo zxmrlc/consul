@@ -21,12 +21,16 @@ export default Route.extend(WithBlockingActions, {
     loading: function(transition, originRoute) {
       const $root = get(this, 'dom').root();
       let dc = null;
+      let loading = !$root.classList.contains('ember-loading');
       if (originRoute.routeName !== 'dc') {
         const model = this.modelFor('dc') || { dcs: null, dc: { Name: null } };
         dc = get(this, 'repo').getActive(model.dc.Name, model.dcs);
+        if (transition.targetName.indexOf('.index') === -1) {
+          loading = false;
+        }
       }
       hash({
-        loading: !$root.classList.contains('ember-loading'),
+        loading: loading,
         dc: dc,
       }).then(model => {
         next(() => {

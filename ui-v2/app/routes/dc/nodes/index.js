@@ -5,12 +5,12 @@ import { get } from '@ember/object';
 
 export default Route.extend({
   repo: service('repository/node'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  // queryParams: {
+  //   s: {
+  //     as: 'filter',
+  //     replace: true,
+  //   },
+  // },
   model: function(params) {
     return hash({
       items: get(this, 'repo').findAllByDatacenter(this.modelFor('dc').dc.Name),

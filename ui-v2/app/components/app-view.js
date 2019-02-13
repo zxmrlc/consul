@@ -1,5 +1,5 @@
 import Component from '@ember/component';
-import { get } from '@ember/object';
+import { get, set } from '@ember/object';
 import { inject as service } from '@ember/service';
 import SlotsMixin from 'ember-block-slots';
 import templatize from 'consul-ui/utils/templatize';
@@ -10,9 +10,18 @@ export default Component.extend(SlotsMixin, {
   classNames: ['app-view'],
   classNameBindings: ['enabled::disabled', 'authorized::unauthorized'],
   dom: service('dom'),
+  willRender: function() {
+    this._super(...arguments);
+    // console.log(this._isRegistered('content'));
+    set(this, 'hasPane', this._isRegistered('pane'));
+  },
   didReceiveAttrs: function() {
     // right now only manually added classes are hoisted to <html>
-    const $root = get(this, 'dom').root();
+    // let $root = get(this, 'dom').root();
+    const $root = get(this, 'dom').closest('section', this.element);
+    if (!$root) {
+      return;
+    }
     let cls = get(this, 'class') || '';
     if (get(this, 'loading')) {
       cls += ' loading';

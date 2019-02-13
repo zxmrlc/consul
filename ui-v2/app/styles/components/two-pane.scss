@@ -1,0 +1,11 @@
+@import './two-pane/index';
+.pane {
+  @extend %two-pane;
+}
+// main > .app-view > .pane > section:last-child {
+//   display: none;
+// }
+input[type='range'] {
+  @extend %two-pane-handle;
+  // display: none;
+}

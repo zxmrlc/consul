@@ -21,14 +21,14 @@ const countStatus = function(items, status) {
   }, 0);
 };
 export default Mixin.create(WithFiltering, {
-  queryParams: {
-    status: {
-      as: 'status',
-    },
-    s: {
-      as: 'filter',
-    },
-  },
+  // queryParams: {
+  //   status: {
+  //     as: 'status',
+  //   },
+  //   s: {
+  //     as: 'filter',
+  //   },
+  // },
   healthFilters: computed('items', function() {
     const items = get(this, 'items');
     const objs = ['', 'passing', 'warning', 'critical'].map(function(item) {

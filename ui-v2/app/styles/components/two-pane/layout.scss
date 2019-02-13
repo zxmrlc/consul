@@ -1,0 +1,39 @@
+%two-pane {
+  display: flex;
+}
+%two-pane > section {
+  @extend %two-pane-pane;
+  width: 100%;
+}
+%two-pane-pane:not(:only-child) {
+  width: 50%;
+  background-color: $white;
+}
+%two-pane-pane:first-child {
+  padding-right: 20px;
+}
+%two-pane-pane:last-child {
+  padding-left: 20px;
+}
+%two-pane-handle {
+  -webkit-appearance: none;
+  width: 100%;
+}
+%two-pane-handle:focus {
+  outline: none;
+}
+%two-pane-handle::-webkit-slider-thumb {
+  background-color: $gray-300;
+  -webkit-appearance: none;
+  height: calc(100vh - 113px);
+  width: 1px;
+  position: relative;
+  z-index: 1000;
+  cursor: col-resize;
+  margin-top: -66px;
+}
+%two-pane-handle::-webkit-slider-runnable-track {
+  width: 100%;
+  -webkit-appearance: none;
+  height: 0;
+}

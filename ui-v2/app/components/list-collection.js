@@ -39,10 +39,12 @@ export default Component.extend(WithResizing, {
       const rect = this.element.getBoundingClientRect();
       const $footer = dom.element('footer[role="contentinfo"]');
       const space = rect.top + $footer.clientHeight;
-      const height = e.detail.height - space;
-      this.set('height', Math.max(0, height));
-      this.updateItems();
-      this.updateScrollPosition();
+      if (typeof e.detail.height !== 'undefined') {
+        const height = e.detail.height - space;
+        this.set('height', Math.max(0, height));
+        this.updateItems();
+        this.updateScrollPosition();
+      }
     }
     const width = e.detail.width;
     const len = get(this, 'columns.length');

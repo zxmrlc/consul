@@ -1,0 +1,18 @@
+{{yield}}
+{{#if enabled}}
+  <input type="range" min="0" max="1000" value="500" oninput={{action 'change'}} />
+{{/if}}
+  <div class={{if enabled 'pane'}}>
+{{#if enabled}}
+    <section>
+      {{#yield-slot 'one'}}
+          {{yield}}
+      {{/yield-slot}}
+    </section>
+{{/if}}
+    <section>
+      {{#yield-slot 'two'}}
+          {{yield}}
+      {{/yield-slot}}
+    </section>
+  </div>

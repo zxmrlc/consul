@@ -4,12 +4,12 @@ import { get, set, computed } from '@ember/object';
 import WithSearching from 'consul-ui/mixins/with-searching';
 export default Controller.extend(WithSearching, {
   dom: service('dom'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  // queryParams: {
+  //   s: {
+  //     as: 'filter',
+  //     replace: true,
+  //   },
+  // },
   init: function() {
     this.searchParams = {
       nodeservice: 's',

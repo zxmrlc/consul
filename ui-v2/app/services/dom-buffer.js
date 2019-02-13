@@ -10,7 +10,7 @@ export default Service.extend(Evented, {
     return buffer[name];
   },
   add: function(name, dom) {
-    this.trigger('add', dom);
+    this.trigger('add', { type: 'add', detail: { name: name, content: dom } });
     buffer[name] = dom;
     return dom;
   },

@@ -4,6 +4,7 @@ import { get } from '@ember/object';
 
 export default DomBufferFlushComponent.extend({
   dom: service('dom'),
+  name: 'modal',
   actions: {
     change: function(e) {
       [...get(this, 'dom').elements('[name="modal"]')]

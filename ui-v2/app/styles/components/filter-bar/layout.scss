@@ -3,24 +3,20 @@
   display: block;
   margin-top: 0 !important;
 }
-@media #{$--horizontal-filters} {
-  %filter-bar {
-    display: flex;
-    flex-direction: row-reverse;
-    justify-content: space-between;
-  }
-  %filter-bar > *:first-child {
-    margin-left: 12px;
-  }
-  %filter-bar fieldset {
-    min-width: 210px;
-    width: auto;
-  }
+%filter-bar-horizontal {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
 }
-@media #{$--lt-horizontal-filters} {
-  %filter-bar > *:first-child {
-    margin-bottom: 12px;
-  }
+%filter-bar-horizontal > *:first-child {
+  margin-left: 12px;
+}
+%filter-bar-horizontal fieldset {
+  min-width: 210px;
+  width: auto;
+}
+%filter-bar-vertical > *:first-child {
+  margin-bottom: 12px;
 }
 // icons
 %filter-bar [role='radiogroup'] label span::before {

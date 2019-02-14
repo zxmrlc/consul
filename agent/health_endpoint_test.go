@@ -665,6 +665,8 @@ func TestHealthServiceNodes_PassingFilter(t *testing.T) {
 	defer a.Shutdown()
 
 	dc := "dc1"
+
+	testrpc.WaitForTestAgent(t, a.RPC, dc)
 	// Create a failing service check
 	args := &structs.RegisterRequest{
 		Datacenter: dc,
@@ -678,7 +680,6 @@ func TestHealthServiceNodes_PassingFilter(t *testing.T) {
 		},
 	}
 
-	testrpc.WaitForLeader(t, a.RPC, dc)
 	var out struct{}
 	if err := a.RPC("Catalog.Register", args, &out); err != nil {
 		t.Fatalf("err: %v", err)

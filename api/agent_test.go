@@ -742,7 +742,7 @@ func TestAPI_AgentSetTTLStatus(t *testing.T) {
 	defer s.Stop()
 
 	agent := c.Agent()
-
+	s.WaitForSerfCheck(t)
 	reg := &AgentServiceRegistration{
 		Name: "foo",
 		Check: &AgentServiceCheck{

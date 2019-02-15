@@ -227,6 +227,7 @@ func TestAPI_HealthChecks_NodeMetaFilter(t *testing.T) {
 	})
 	defer s.Stop()
 
+	s.WaitForSerfCheck(t)
 	agent := c.Agent()
 	health := c.Health()
 

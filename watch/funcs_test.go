@@ -562,8 +562,8 @@ func TestConnectRootsWatch(t *testing.T) {
 			originalCAID = v.ActiveRootID
 			return
 		}
-		assert.NotEmpty(t, originalCAID)
-		assert.NotEqual(t, originalCAID, v.ActiveRootID)
+		require.NotEmpty(t, originalCAID)
+		require.NotEqual(t, originalCAID, v.ActiveRootID)
 		invoke <- nil
 	}
 

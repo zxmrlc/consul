@@ -32,6 +32,7 @@ func TestStatusLeader(t *testing.T) {
 	codec := rpcClient(t, s1)
 	defer codec.Close()
 
+	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 	arg := struct{}{}
 	var leader string
 	if err := msgpackrpc.CallWithCodec(codec, "Status.Leader", arg, &leader); err != nil {
@@ -40,8 +41,6 @@ func TestStatusLeader(t *testing.T) {
 	if leader != "" {
 		t.Fatalf("unexpected leader: %v", leader)
 	}
-
-	testrpc.WaitForTestAgent(t, s1.RPC, "dc1")
 
 	if err := msgpackrpc.CallWithCodec(codec, "Status.Leader", arg, &leader); err != nil {
 		t.Fatalf("err: %v", err)

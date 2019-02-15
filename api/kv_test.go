@@ -285,7 +285,6 @@ func TestAPI_ClientWatchList(t *testing.T) {
 	defer s.Stop()
 
 	kv := c.KV()
-	s.WaitForSerfCheck(t)
 	// Get a get without a key
 	prefix := testKey()
 	key := path.Join(prefix, testKey())

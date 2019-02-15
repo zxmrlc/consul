@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -628,12 +627,12 @@ func TestCacheGet_noIndexSetsOne(t *testing.T) {
 			opts := args.Get(0).(FetchOptions)
 			isFirst := atomic.SwapInt32(&first, 0)
 			if isFirst == 1 {
-				assert.Equal(t, uint64(0), opts.MinIndex)
+				require.Equal(t, uint64(0), opts.MinIndex)
 			} else {
-				assert.True(t, opts.MinIndex > 0, "minIndex > 0")
+				require.True(t, opts.MinIndex > 0, "minIndex > 0")
 			}
 		})
-
+		fmt.Println("get here")
 		// Fetch
 		resultCh := TestCacheGetCh(t, c, "t", TestRequest(t, RequestInfo{Key: "hello"}))
 		TestCacheGetChResult(t, resultCh, 0)
@@ -650,9 +649,9 @@ func TestCacheGet_noIndexSetsOne(t *testing.T) {
 			opts := args.Get(0).(FetchOptions)
 			isFirst := atomic.SwapInt32(&first, 0)
 			if isFirst == 1 {
-				assert.Equal(t, uint64(0), opts.MinIndex)
+				require.Equal(t, uint64(0), opts.MinIndex)
 			} else {
-				assert.True(t, opts.MinIndex > 0, "minIndex > 0")
+				require.True(t, opts.MinIndex > 0, "minIndex > 0")
 			}
 		})
 

@@ -956,7 +956,7 @@ func TestAPI_AgentChecks_serviceBound(t *testing.T) {
 	defer s.Stop()
 
 	agent := c.Agent()
-
+	s.WaitForSerfCheck(t)
 	// First register a service
 	serviceReg := &AgentServiceRegistration{
 		Name: "redis",

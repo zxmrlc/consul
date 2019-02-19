@@ -168,7 +168,7 @@ func TestAPI_AgentServices(t *testing.T) {
 	defer s.Stop()
 
 	agent := c.Agent()
-
+	s.WaitForSerfCheck(t)
 	reg := &AgentServiceRegistration{
 		Name: "foo",
 		ID:   "foo",

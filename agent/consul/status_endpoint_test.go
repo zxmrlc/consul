@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/agent/pool"
-	"github.com/hashicorp/consul/testrpc"
 	"github.com/hashicorp/net-rpc-msgpackrpc"
 )
 
@@ -32,7 +31,6 @@ func TestStatusLeader(t *testing.T) {
 	codec := rpcClient(t, s1)
 	defer codec.Close()
 
-	testrpc.WaitForLeader(t, s1.RPC, "dc1")
 	arg := struct{}{}
 	var leader string
 	if err := msgpackrpc.CallWithCodec(codec, "Status.Leader", arg, &leader); err != nil {

@@ -21,6 +21,7 @@ func TestAPI_ConnectCARoots_empty(t *testing.T) {
 	})
 	defer s.Stop()
 
+	s.WaitForSerfCheck(t)
 	connect := c.Connect()
 	_, _, err := connect.CARoots(nil)
 

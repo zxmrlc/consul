@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -1888,9 +1887,6 @@ func TestDNS_NSRecords(t *testing.T) {
 }
 
 func TestDNS_NSRecords_IPV6(t *testing.T) {
-	if os.Getenv("CIRCLECI") == "true" {
-		t.Skip("IPv6 not supported on CircleCI")
-	}
 	t.Parallel()
 	a := NewTestAgent(t, t.Name(), `
  		domain = "CONSUL."

@@ -4245,7 +4245,7 @@ func checkDNSService(t *testing.T, generateNumNodes int, aRecordLimit int, qType
 		}
 	`)
 	defer a.Shutdown()
-	testrpc.WaitForLeader(t, a.RPC, "dc1")
+	testrpc.WaitForTestAgent(t, a.RPC, "dc1")
 
 	for i := 0; i < generateNumNodes; i++ {
 		nodeAddress := fmt.Sprintf("127.0.0.%d", i+1)

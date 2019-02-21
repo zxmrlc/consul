@@ -70,6 +70,7 @@ func TestAPI_CoordinateUpdate(t *testing.T) {
 	t.Parallel()
 	c, s := makeClient(t)
 	defer s.Stop()
+	s.WaitForSerfCheck(t)
 
 	node := "foo"
 	_, err := c.Catalog().Register(&CatalogRegistration{

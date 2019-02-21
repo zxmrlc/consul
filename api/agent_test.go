@@ -1197,7 +1197,7 @@ func TestAPI_NodeMaintenance(t *testing.T) {
 	defer s.Stop()
 
 	agent := c.Agent()
-
+	s.WaitForSerfCheck(t)
 	// Enable maintenance mode
 	if err := agent.EnableNodeMaintenance("broken"); err != nil {
 		t.Fatalf("err: %s", err)

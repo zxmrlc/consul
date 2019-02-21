@@ -229,7 +229,7 @@ func TestAPI_ClientWatchGet(t *testing.T) {
 	defer s.Stop()
 
 	kv := c.KV()
-
+	s.WaitForSerfCheck(t)
 	// Get a get without a key
 	key := testKey()
 	pair, meta, err := kv.Get(key, nil)

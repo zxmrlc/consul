@@ -393,7 +393,7 @@ func TestAPI_HealthConnect(t *testing.T) {
 
 	agent := c.Agent()
 	health := c.Health()
-
+	s.WaitForSerfCheck(t)
 	// Make a service with a proxy
 	reg := &AgentServiceRegistration{
 		Name: "foo",

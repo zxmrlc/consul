@@ -1,72 +1,46 @@
-{{#app-view class="node list"}}
+{{#with (array
+  (array 'node:' 'Node == "%s"')
+  (array 'status:' 'Checks.Status == %s')
+  (array '' 'Node == "%s"')
+  ) as |filtermap|}}
+
+  {{data-source src=(concat '/' dc '/node/' slug) filter=(or filter (to-filter s map=filtermap)) onchange=(action (mut items) value='data')}}
+
+  {{#app-view class="node list" loading=(is-undefined items)}}
     {{#block-slot 'header'}}
-        <h1>
-            Nodes <em>{{format-number items.length}} total</em>
-        </h1>
-        <label for="toolbar-toggle"></label>
+      <h1>
+          Nodes <em>{{format-number items.length}} total</em>
+      </h1>
+      <label for="toolbar-toggle"></label>
     {{/block-slot}}
     {{#block-slot 'toolbar'}}
-{{#if (gt items.length 0) }}
-        {{catalog-filter searchable=(array searchableHealthy searchableUnhealthy) search=s status=filters.status onchange=(action 'filter')}}
-{{/if}}
+        {{#search-bar
+          filtermap=filtermap
+          placeholder=(hash
+            simple='node:name status:critical search-term'
+            advanced='Node == "name" and Checks.Status == "passing"'
+          )
+          value=s
+          onchange=(queue (action (mut filter) value='target.data') (action (mut s) value='target.value'))
+        }}
+          {{#block-slot 'simple-note'}}
+            Search by any string, or filter by a specific selector such as: <span>node:name</span> or <span>status:critical</span>
+          {{/block-slot}}
+          {{#block-slot 'advanced-note'}}
+            Combine one or more filter expressions like: <code>Node == "name" and Checks.Status != "passing"</code>&nbsp;<a data-test-footer-docs href="{{env 'CONSUL_API_URL'}}/features/filtering.html#expression-syntax" rel="help noopener noreferrer" target="_blank">Syntax Documentation</a>
+          {{/block-slot}}
+        {{/search-bar}}
     {{/block-slot}}
     {{#block-slot 'content'}}
-{{#if (gt unhealthy.length 0) }}
-        <div class="unhealthy">
-            <h2>Unhealthy Nodes</h2>
-            <div>
-                {{! think about 2 differing views here }}
-                <ul>
-                  {{#changeable-set dispatcher=searchableUnhealthy}}
-                    {{#block-slot 'set' as |unhealthy|}}
-                      {{#each unhealthy as |item|}}
-                          {{healthchecked-resource
-                              tagName='li'
-                              data-test-node=item.Node
-                              href=(href-to 'dc.nodes.show' item.Node)
-                              name=item.Node
-                              address=item.Address
-                              checks=item.Checks
-                          }}
-                      {{/each}}
-                    {{/block-slot}}
-                    {{#block-slot 'empty'}}
-                      <p>
-                        There are no unhealthy nodes for that search.
-                      </p>
-                    {{/block-slot}}
-                  {{/changeable-set}}
-                </ul>
-            </div>
-        </div>
-{{/if}}
-{{#if (gt healthy.length 0) }}
-        <div class="healthy">
-            <h2>Healthy Nodes</h2>
-            {{#changeable-set dispatcher=searchableHealthy}}
-              {{#block-slot 'set' as |healthy|}}
-                {{#list-collection cellHeight=92 items=healthy as |item index|}}
-                    {{healthchecked-resource
-                        data-test-node=item.Node
-                        href=(href-to 'dc.nodes.show' item.Node)
-                        name=item.Node
-                        address=item.Address
-                        checks=item.Checks
-                    }}
-                {{/list-collection}}
-              {{/block-slot}}
-              {{#block-slot 'empty'}}
-                <p>
-                  There are no healthy nodes for that search.
-                </p>
-              {{/block-slot}}
-            {{/changeable-set}}
-        </div>
-{{/if}}
-{{#if (and (eq healthy.length 0) (eq unhealthy.length 0)) }}
-    <p>
-        There are no nodes.
-    </p>
-{{/if}}
+        {{#if (lt items.length 1)}}
+          <p>
+            There are no nodes{{if s ' matching that search' ''}}.
+          </p>
+        {{else}}
+        {{#consul-node-list items=items}}
+          {{#block-slot 'data'}}{{/block-slot}}
+        {{/consul-node-list}}
+        {{/if}}
     {{/block-slot}}
-{{/app-view}}
+  {{/app-view}}
+{{/with}}

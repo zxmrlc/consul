@@ -2,24 +2,19 @@ import Route from '@ember/routing/route';
 import { inject as service } from '@ember/service';
 import { hash } from 'rsvp';
 import { get } from '@ember/object';
+import { routes } from 'consul-ui/router';
 
 export default Route.extend({
-  repo: service('repository/service'),
   settings: service('settings'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  queryParams: routes.dc.services.show._options.query,
   model: function(params) {
-    const repo = get(this, 'repo');
     const settings = get(this, 'settings');
     const dc = this.modelFor('dc').dc.Name;
     return hash({
-      item: repo.findBySlug(params.name, dc),
+      slug: params.name,
       urls: settings.findBySlug('urls'),
       dc: dc,
+      item: undefined,
     });
   },
   setupController: function(controller, model) {

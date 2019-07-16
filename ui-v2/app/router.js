@@ -1,6 +1,18 @@
 import EmberRouter from '@ember/routing/router';
 import config from './config/environment';
 import walk from 'consul-ui/utils/routing/walk';
+import wildcard from 'consul-ui/utils/routing/wildcard';
+
+import { get } from '@ember/object';
+import { assert } from '@ember/debug';
+
+const createQueryParams = function(routes) {
+  return function(id) {
+    const queryParams = get(routes, `${id}._options.query`);
+    assert(`Route ${id} doesn't exist`, queryParams);
+    return queryParams;
+  };
+};
 
 const Router = EmberRouter.extend({
   location: config.locationType,
@@ -13,10 +25,30 @@ export const routes = {
     _options: { path: ':dc' },
     // Services represent a consul service
     services: {
-      _options: { path: '/services' },
+      _options: {
+        path: '/services',
+        query: {
+          s: {
+            as: 'filter',
+            replace: true,
+          },
+          // temporary support of old style status
+          status: {
+            as: 'status',
+          },
+        },
+      },
       // Show an individual service
       show: {
-        _options: { path: '/:name' },
+        _options: {
+          path: '/:name',
+          query: {
+            s: {
+              as: 'filter',
+              replace: true,
+            },
+          },
+        },
       },
       instance: {
         _options: { path: '/:name/:node/:id' },
@@ -24,10 +56,30 @@ export const routes = {
     },
     // Nodes represent a consul node
     nodes: {
-      _options: { path: '/nodes' },
+      _options: {
+        path: '/nodes',
+        query: {
+          s: {
+            as: 'filter',
+            replace: true,
+          },
+          // temporary support of old style status
+          status: {
+            as: 'status',
+          },
+        },
+      },
       // Show an individual node
       show: {
-        _options: { path: '/:name' },
+        _options: {
+          path: '/:name',
+          query: {
+            s: {
+              as: 'filter',
+              replace: true,
+            },
+          },
+        },
       },
     },
     // Intentions represent a consul intention
@@ -107,4 +159,6 @@ export const routes = {
     _options: { path: '/*path' },
   },
 };
+export const queryParams = createQueryParams(routes);
+export const isWildcard = wildcard(routes);
 export default Router.map(walk(routes));

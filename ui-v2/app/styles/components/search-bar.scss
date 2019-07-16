@@ -1,0 +1,17 @@
+@import './search-bar/index';
+.search-bar {
+  @extend %search-bar;
+}
+@media #{$--horizontal-selects} {
+  %search-bar {
+    margin-top: 14px;
+  }
+}
+@media #{$--lt-horizontal-selects} {
+  %search-bar {
+    margin-top: 9px;
+  }
+}
+%search-bar {
+  margin-bottom: 5px;
+}

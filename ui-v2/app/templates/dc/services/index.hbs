@@ -1,69 +1,53 @@
-{{#app-view class="service list"}}
-    {{#block-slot 'notification' as |status type|}}
-      {{partial 'dc/services/notifications'}}
-    {{/block-slot}}
-    {{#block-slot 'header'}}
-        <h1>
-            Services <em>{{format-number items.length}} total</em>
-        </h1>
-        <label for="toolbar-toggle"></label>
-    {{/block-slot}}
-    {{#block-slot 'toolbar'}}
-{{#if (gt items.length 0) }}
-      {{phrase-editor
-        placeholder='service:name tag:name status:critical search-term'
-        value=(slice 0 terms.length terms)
-        onchange=(action (mut terms) value='target.value')
-        searchable=searchable
-      }}
-{{/if}}
-    {{/block-slot}}
-    {{#block-slot 'content'}}
-        {{#changeable-set dispatcher=searchable}}
-          {{#block-slot 'set' as |filtered|}}
-            {{#tabular-collection
-                route='dc.services.show'
-                key='Name'
-                items=filtered as |item index|
-            }}
-                {{#block-slot 'header'}}
-                    <th style={{remainingWidth}}>Service</th>
-                    <th>Type</th>
-                    <th style={{totalWidth}}>Health Checks<span><em role="tooltip">The number of health checks for the service on all nodes</em></span></th>
-                    <th style={{remainingWidth}}>Tags</th>
-                {{/block-slot}}
-                {{#block-slot 'row'}}
-                    <td data-test-service="{{item.Name}}" style={{remainingWidth}}>
-                      <a href={{href-to 'dc.services.show' item.Name}}>
-                        <span data-test-external-source="{{service/external-source item}}" style={{{ concat 'background-image: ' (css-var (concat '--' (service/external-source item) '-color-svg') 'none')}}}></span>
-                        {{item.Name}}
-                      </a>
-                    </td>
-                    <td>
-{{#if (eq item.Kind 'connect-proxy')}}
-                        <span class="kind-proxy">Proxy</span>
-{{else}}
-                        &nbsp;
-{{/if}}
-                    </td>
-                    <td style={{totalWidth}}>
-                      {{healthcheck-info
-                        passing=item.ChecksPassing warning=item.ChecksWarning critical=item.ChecksCritical
-                        passingWidth=passingWidth warningWidth=warningWidth criticalWidth=criticalWidth
-                      }}
-                    </td>
-                    <td style={{remainingWidth}}>
-                      {{tag-list items=item.Tags}}
-                    </td>
-                {{/block-slot}}
-            {{/tabular-collection}}
+{{#with (array
+      (array 'service:' 'Service.Service == "%s"')
+      (array 'status:' 'Checks.Status == "%s"')
+      (array 'tags:' '"%s" IN Service.Tags')
+      (array 'tag:' '"%s" IN Service.Tags')
+      (array '' 'Service.Service == "%s"')
+  ) as |filtermap|}}
+
+  {{data-source src=(concat '/' dc '/service/' slug) filter=(or filter (to-filter s map=filtermap)) onchange=(action (mut items) value='data')}}
+
+  {{#app-view class="service list" loading=(is-undefined items)}}
+      {{#block-slot 'notification' as |status type|}}
+        {{partial 'dc/services/notifications'}}
+      {{/block-slot}}
+      {{#block-slot 'header'}}
+          <h1>
+              Services <em>{{format-number items.length}} total</em>
+          </h1>
+          <label for="toolbar-toggle"></label>
+      {{/block-slot}}
+      {{#block-slot 'toolbar'}}
+        {{#search-bar
+          filtermap=filtermap
+          placeholder=(hash
+            simple='service:name tag:name status:critical search-term'
+            advanced='Service.Service == "consul" and Checks.Status == "passing"'
+          )
+          value=s
+          onchange=(queue (action (mut filter) value='target.data') (action (mut s) value='target.value'))
+        }}
+          {{#block-slot 'simple-note'}}
+            Search by any string, or filter by a specific selector such as: <span>service:web</span> or <span>tag:production</span>
           {{/block-slot}}
-          {{#block-slot 'empty'}}
-            <p>
-              There are no services.
-            </p>
+          {{#block-slot 'advanced-note'}}
+            Combine one or more filter expressions like: <code>Service.Service == "web" and (Service.Tags is not empty or Checks.Status != "passing")</code>&nbsp;<a data-test-footer-docs href="{{env 'CONSUL_API_URL'}}/features/filtering.html#expression-syntax" rel="help noopener noreferrer" target="_blank">Syntax Documentation</a>
           {{/block-slot}}
-        {{/changeable-set}}
+        {{/search-bar}}
+      {{/block-slot}}
+      {{#block-slot 'content'}}
+        {{#if (lt items.length 1)}}
+          <p>
+            There are no services{{if s ' matching that search' ''}}.
+          </p>
+        {{else}}
+          {{#consul-service-list items=items}}
+            {{#block-slot 'data'}}{{/block-slot}}
+          {{/consul-service-list}}
+        {{/if}}
     {{/block-slot}}
-{{/app-view}}
+  {{/app-view}}
+
+{{/with}}
 

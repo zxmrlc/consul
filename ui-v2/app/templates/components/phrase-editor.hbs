@@ -1,5 +1,5 @@
   <ul>
-      {{#each value as |item index|}}
+      {{#each values as |item index|}}
         <li>
           <button type="button" {{action 'remove' index}}>Remove</button>{{item}}
         </li>
@@ -7,5 +7,5 @@
   </ul>
   <label class="type-search">
     <span>Search</span>
-    <input onchange={{action 'add'}} onsearch={{action 'add'}} oninput={{action 'input'}} onkeydown={{action 'keydown'}} placeholder={{if (eq value.length 0) placeholder}} value={{item}} type="search" name="s" autofocus="autofocus" />
+    <input onchange={{action 'add'}} onsearch={{action 'add'}} oninput={{action 'input'}} onkeydown={{action 'keydown'}} placeholder={{if (eq values.length 0) placeholder}} value={{item}} type="search" name="s" autofocus="autofocus" />
   </label>

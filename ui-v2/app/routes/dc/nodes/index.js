@@ -1,20 +1,21 @@
 import Route from '@ember/routing/route';
-import { inject as service } from '@ember/service';
-import { hash } from 'rsvp';
-import { get } from '@ember/object';
+import { queryParams } from 'consul-ui/router';
+import convertStatus from 'consul-ui/utils/routing/convert-status';
 
 export default Route.extend({
-  repo: service('repository/node'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  queryParams: queryParams('dc.nodes'),
   model: function(params) {
-    return hash({
-      items: get(this, 'repo').findAllByDatacenter(this.modelFor('dc').dc.Name),
-    });
+    return {
+      ...{
+        slug: '*',
+        dc: this.modelFor('dc').dc.Name,
+      },
+      ...((params.s || params.status) && {
+        // we check for the old style `status` variable here
+        // and convert it to the new style filter=status:critical
+        s: convertStatus(params.s, params.status),
+      }),
+    };
   },
   setupController: function(controller, model) {
     controller.setProperties(model);

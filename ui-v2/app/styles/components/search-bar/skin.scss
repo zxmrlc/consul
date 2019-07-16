@@ -1,0 +1,22 @@
+%search-bar .phrase-editor,
+%search-bar-advanced-input {
+  border: 1px solid $gray-300;
+  border-radius: 2px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 0;
+}
+%search-bar-selected-option {
+  padding-right: 0.7em;
+  margin-left: 1.1em;
+}
+%search-bar-selected-icon {
+  @extend %with-chevron-down-icon;
+  border: 0;
+  width: 1.2em;
+  height: 1.2em;
+}
+%search-bar-select-option {
+  background-color: $gray-050;
+  color: $gray-800;
+}

@@ -3,29 +3,21 @@
 // (dynamic or wildcard) and encode or not depending on the type
 import Helper from '@ember/component/helper';
 import { hrefTo } from 'ember-href-to/helpers/href-to';
-
-import wildcard from 'consul-ui/utils/routing/wildcard';
-
-import { routes } from 'consul-ui/router';
-
-const isWildcard = wildcard(routes);
-
+import { isWildcard } from 'consul-ui/router';
 export default Helper.extend({
   compute([targetRouteName, ...rest], namedArgs) {
+    if (isWildcard(targetRouteName)) {
+      rest = rest.map(function(item, i) {
+        return item
+          .split('/')
+          .map(encodeURIComponent)
+          .join('/');
+      });
+    }
     if (namedArgs.params) {
-      return hrefTo(this, ...namedArgs.params);
+      return hrefTo(this, namedArgs.params);
     } else {
-      if (isWildcard(targetRouteName)) {
-        const split = rest.map(function(item, i) {
-          return item
-            .split('/')
-            .map(encodeURIComponent)
-            .join('/');
-        });
-        return hrefTo(this, targetRouteName, ...split);
-      } else {
-        return hrefTo(this, targetRouteName, ...rest);
-      }
+      return hrefTo(this, [targetRouteName, ...rest]);
     }
   },
 });

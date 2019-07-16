@@ -1,0 +1,24 @@
+{{yield}}
+{{#yield-slot 'data'}}
+  {{yield}}
+{{else}}
+  {{data-source src=(concat '/' dc '/node/*') filter=filter onchange=(queue (action (mut items) value='data') (action onchange))}}
+{{/yield-slot}}
+{{#if (gt items.length 0)}}
+    <div class="unhealthy">
+      <div>
+        <ul>
+          {{#each items as |item|}}
+            {{healthchecked-resource
+              tagName='li'
+              data-test-node=item.Node
+              href=(href-to 'dc.nodes.show' item.Node)
+              name=item.Node
+              address=item.Address
+              checks=item.Checks
+            }}
+          {{/each}}
+        </ul>
+      </div>
+    </div>
+{{/if}}

@@ -1,2 +1,17 @@
 @import './skin';
 @import './layout';
+%form-element > em {
+  @extend %form-element-note;
+}
+%form-element-note > code {
+  @extend %pill;
+}
+%form-element-note a {
+  @extend %anchor;
+}
+%form-element-note a[rel*='help']::after {
+  width: 1em;
+  height: 1em;
+  margin-top: 0.2em;
+  margin-left: 0.2em;
+}

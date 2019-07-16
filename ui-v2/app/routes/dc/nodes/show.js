@@ -2,6 +2,7 @@ import Route from '@ember/routing/route';
 import { inject as service } from '@ember/service';
 import { hash } from 'rsvp';
 import { get } from '@ember/object';
+import { queryParams } from 'consul-ui/router';
 
 import WithBlockingActions from 'consul-ui/mixins/with-blocking-actions';
 
@@ -9,12 +10,7 @@ export default Route.extend(WithBlockingActions, {
   repo: service('repository/node'),
   sessionRepo: service('repository/session'),
   coordinateRepo: service('repository/coordinate'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  queryParams: queryParams('dc.nodes.show'),
   model: function(params) {
     const dc = this.modelFor('dc').dc.Name;
     const name = params.name;

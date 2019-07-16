@@ -1,0 +1,21 @@
+@import './layout';
+@import './skin';
+%search-bar input.search-bar-advanced {
+  @extend %search-bar-advanced-input;
+}
+%search-bar .ember-basic-dropdown {
+  @extend %search-bar-select;
+}
+%search-bar .ember-basic-dropdown-trigger,
+%search-bar .ember-power-select-option {
+  @extend %search-bar-select-option;
+}
+%search-bar .ember-power-select-selected-item {
+  @extend %search-bar-selected-option;
+}
+%search-bar .ember-power-select-status-icon {
+  @extend %search-bar-selected-icon;
+}
+%search-bar em {
+  @extend %form-element-note;
+}

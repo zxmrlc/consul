@@ -1,0 +1,42 @@
+{{yield}}
+<div>
+  {{#with (array
+        'Simple search'
+        'Advanced syntax'
+      ) as |options|
+  }}
+    {{#power-select
+      options=(range 0 options.length)
+      selected=(or searchType '0')
+      renderInPlace=true
+      searchEnabled=false
+      onchange=(action (mut searchType)) as |index|}}
+        {{object-at index options}}
+    {{/power-select}}
+  {{/with}}
+  <div>
+    <input type="checkbox" id={{concat 'state-' elementId}} checked={{eq searchType 1}} />
+    <div>
+      {{phrase-editor
+        placeholder=placeholder.simple
+        value=value
+        onchange=(action 'change')
+      }}
+    </div>
+    <label>
+      <input placeholder={{placeholder.advanced}} type="search" class="search-bar-advanced" onsearch={{action 'change'}} />
+    </label>
+  </div>
+  <button type="submit" {{action 'change'}}>Search</button>
+</div>
+<div>
+  {{#if (eq searchType 0)}}
+    <em>
+      {{#yield-slot 'simple-note'}}{{yield}}{{/yield-slot}}
+    </em>
+  {{else}}
+    <em>
+      {{#yield-slot 'advanced-note'}}{{yield}}{{/yield-slot}}
+    </em>
+  {{/if}}
+</div>

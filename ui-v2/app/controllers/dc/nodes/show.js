@@ -2,6 +2,7 @@ import Controller from '@ember/controller';
 import { inject as service } from '@ember/service';
 import { get, set, computed } from '@ember/object';
 import { alias } from '@ember/object/computed';
+import { queryParams } from 'consul-ui/router';
 import WithSearching from 'consul-ui/mixins/with-searching';
 import WithEventSource, { listen } from 'consul-ui/mixins/with-event-source';
 
@@ -9,12 +10,7 @@ export default Controller.extend(WithEventSource, WithSearching, {
   dom: service('dom'),
   notify: service('flashMessages'),
   items: alias('item.Services'),
-  queryParams: {
-    s: {
-      as: 'filter',
-      replace: true,
-    },
-  },
+  queryParams: queryParams('dc.nodes.show'),
   init: function() {
     this.searchParams = {
       nodeservice: 's',

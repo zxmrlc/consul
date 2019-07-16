@@ -45,6 +45,7 @@ caption,
 %app-content div > dl > dt,
 %tbody-th,
 %form-element > span,
+%search-bar-select-option,
 %toggle label span {
   font-weight: $typo-weight-semibold;
 }
@@ -69,7 +70,7 @@ td strong,
 }
 
 /* Styling */
-%form-element > em,
+%form-element-note,
 %tbody-th em,
 %app-view h1 em {
   font-style: normal;
@@ -122,7 +123,7 @@ fieldset > p,
 %app-content > p:only-child,
 %app-view > div.disabled > div,
 %button,
-%form-element > em,
+%form-element-note,
 %form-element > strong,
 %feedback-dialog-inline p {
   font-size: $typo-size-800;

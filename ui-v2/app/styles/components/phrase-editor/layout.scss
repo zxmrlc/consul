@@ -1,7 +1,5 @@
 %phrase-editor {
   display: flex;
-  margin-top: 14px;
-  margin-bottom: 5px;
 }
 %phrase-editor ul {
   overflow: hidden;
@@ -28,9 +26,6 @@
   vertical-align: inherit !important;
 }
 @media #{$--horizontal-selects} {
-  %phrase-editor {
-    margin-top: 14px;
-  }
   %phrase-editor ul {
     padding-top: 5px;
     padding-left: 5px;
@@ -40,9 +35,6 @@
   }
 }
 @media #{$--lt-horizontal-selects} {
-  %phrase-editor {
-    margin-top: 9px;
-  }
   %phrase-editor label {
     display: block;
     margin-top: 5px;

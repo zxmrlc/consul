@@ -1,0 +1,40 @@
+{{yield}}
+{{#yield-slot 'data'}}
+  {{yield}}
+{{else}}
+  {{data-source src=(concat '/' dc '/service/*') filter=filter onchange=(queue (action (mut items) value='data') (action onchange))}}
+{{/yield-slot}}
+{{#if (gt items.length 0)}}
+  {{#tabular-collection items=items as |item index|}}
+    {{#block-slot 'header'}}
+      <th style={{remainingWidth}}>Service</th>
+      <th>Type</th>
+        <th style={{totalWidth}}>Health Checks<span><em role="tooltip">The number of health checks for the service on all nodes</em></span></th>
+      <th style={{remainingWidth}}>Tags</th>
+    {{/block-slot}}
+    {{#block-slot 'row'}}
+      <td data-test-service="{{item.Name}}" style={{remainingWidth}}>
+        <a href={{href-to 'dc.services.show' item.Name}}>
+          <span data-test-external-source="{{service/external-source item}}" style={{{ concat 'background-image: ' (css-var (concat '--' (service/external-source item) '-color-svg') 'none')}}}></span>
+          {{item.Name}}
+        </a>
+      </td>
+      <td>
+{{#if (eq item.Kind 'connect-proxy')}}
+          <span class="kind-proxy">Proxy</span>
+{{else}}
+          &nbsp;
+{{/if}}
+        </td>
+        <td style={{totalWidth}}>
+          {{healthcheck-info
+            passing=item.ChecksPassing warning=item.ChecksWarning critical=item.ChecksCritical
+            passingWidth=passingWidth warningWidth=warningWidth criticalWidth=criticalWidth
+          }}
+        </td>
+        <td style={{remainingWidth}}>
+          {{tag-list items=item.Tags}}
+        </td>
+    {{/block-slot}}
+  {{/tabular-collection}}
+{{/if}}

@@ -21,6 +21,9 @@ export default Service.extend({
     if (typeof configuration.cursor !== 'undefined') {
       query.index = configuration.cursor;
     }
+    if (configuration.filter) {
+      query.filter = configuration.filter;
+    }
     return get(this, 'store').query(this.getModelName(), query);
   },
   findBySlug: function(slug, dc, configuration = {}) {

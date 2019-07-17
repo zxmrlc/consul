@@ -5,20 +5,38 @@ import { get, set } from '@ember/object';
 import Slotted from 'block-slots';
 import { toFilter } from 'consul-ui/helpers/to-filter';
 
-const SEARCH_TYPE_SIMPLE = 0;
-const SEARCH_TYPE_ADVANCED = 1;
+// these should remain as strings so that searchType is a string
+// so comparison helpers work properly in the template
+const SEARCH_TYPE_SIMPLE = '0';
+const SEARCH_TYPE_ADVANCED = '1';
+
 export default Component.extend(Slotted, {
+  // const protected/template
+  SEARCH_TYPE_SIMPLE,
+  SEARCH_TYPE_ADVANCED,
+
+  //protected/component settings
+  classNames: ['search-bar'],
+
+  // services
+  dom: service('dom'),
+
+  // protected/template
+  searchType: SEARCH_TYPE_SIMPLE,
+
+  // public attributes
   simplemap: null,
   value: '',
-  searchType: SEARCH_TYPE_SIMPLE,
-  classNames: ['search-bar'],
-  dom: service('dom'),
+
+  // protected/avoid in template
   didInsertElement: function() {
     this._super(...arguments);
     // use {{ref}}
     set(this, 'editor', get(this, 'dom').component('.phrase-editor', this.element));
     set(this, 'input', get(this, 'dom').elements('input[type=search]', this.element)[1]);
   },
+
+  // protected/template
   actions: {
     change: function(e) {
       let value, data;

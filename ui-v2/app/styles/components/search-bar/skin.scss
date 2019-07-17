@@ -4,11 +4,9 @@
   border-radius: 2px;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  border-left: 0;
 }
 %search-bar-selected-option {
-  padding-right: 0.7em;
-  margin-left: 1.1em;
+  border-right: 0;
 }
 %search-bar-selected-icon {
   @extend %with-chevron-down-icon;
@@ -19,4 +17,13 @@
 %search-bar-select-option {
   background-color: $gray-050;
   color: $gray-800;
+  border-right: 0;
+}
+%search-bar.error input.search-bar-advanced,
+%search-bar.error .phrase-editor {
+  border-color: $red-500;
+}
+%search-bar.error input.search-bar-advanced:focus {
+  outline: none !important;
+  box-shadow: 0 0 5px $red-500;
 }

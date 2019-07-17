@@ -6,8 +6,8 @@
       ) as |options|
   }}
     {{#power-select
-      options=(range 0 options.length)
-      selected=(or searchType '0')
+      options=(without searchType (range '0' options.length))
+      selected=searchType
       renderInPlace=true
       searchEnabled=false
       onchange=(action (mut searchType)) as |index|}}
@@ -30,7 +30,7 @@
   <button type="submit" {{action 'change'}}>Search</button>
 </div>
 <div>
-  {{#if (eq searchType 0)}}
+  {{#if (eq searchType SEARCH_TYPE_SIMPLE)}}
     <em>
       {{#yield-slot 'simple-note'}}{{yield}}{{/yield-slot}}
     </em>

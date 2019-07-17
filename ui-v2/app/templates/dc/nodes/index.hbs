@@ -4,43 +4,60 @@
   (array '' 'Node == "%s"')
   ) as |filtermap|}}
 
-  {{data-source src=(concat '/' dc '/node/' slug) filter=(or filter (to-filter s map=filtermap)) onchange=(action (mut items) value='data')}}
+  {{data-source
+    src=(concat '/' dc '/node/' slug)
+    filter=(or filter (to-filter s map=filtermap))
+    onchange=(queue (action (mut items) value='data') (action (mut error) undefined))
+    onerror=(action (mut error) value='error')
+  }}
 
-  {{#app-view class="node list" loading=(is-undefined items)}}
+  {{#app-view class="node list" loading=(and (not error) (is-undefined items))}}
+    {{#block-slot 'notification2'}}
+      {{#if (eq (error-code error) '500')}}
+        {{notification-message type="error" value=(error-message error)}}
+      {{/if}}
+    {{/block-slot}}
     {{#block-slot 'header'}}
+
       <h1>
           Nodes <em>{{format-number items.length}} total</em>
       </h1>
       <label for="toolbar-toggle"></label>
+
     {{/block-slot}}
     {{#block-slot 'toolbar'}}
-        {{#search-bar
-          filtermap=filtermap
-          placeholder=(hash
-            simple='node:name status:critical search-term'
-            advanced='Node == "name" and Checks.Status == "passing"'
-          )
-          value=s
-          onchange=(queue (action (mut filter) value='target.data') (action (mut s) value='target.value'))
-        }}
-          {{#block-slot 'simple-note'}}
-            Search by any string, or filter by a specific selector such as: <span>node:name</span> or <span>status:critical</span>
-          {{/block-slot}}
-          {{#block-slot 'advanced-note'}}
-            Combine one or more filter expressions like: <code>Node == "name" and Checks.Status != "passing"</code>&nbsp;<a data-test-footer-docs href="{{env 'CONSUL_API_URL'}}/features/filtering.html#expression-syntax" rel="help noopener noreferrer" target="_blank">Syntax Documentation</a>
-          {{/block-slot}}
-        {{/search-bar}}
+
+      {{#search-bar
+        class=(if (not (is-undefined error)) 'error' '')
+        filtermap=filtermap
+        placeholder=(hash
+          simple='node:name status:critical search-term'
+          advanced='Node == "name" and Checks.Status == "passing"'
+        )
+        value=s
+        onchange=(queue (action (mut filter) value='target.data') (action (mut s) value='target.value'))
+      }}
+        {{#block-slot 'simple-note'}}
+          Search by any string, or filter by a specific selector such as: <span>node:name</span> or <span>status:critical</span>
+        {{/block-slot}}
+        {{#block-slot 'advanced-note'}}
+          Combine one or more filter expressions like: <code>Node == "name" and Checks.Status != "passing"</code>&nbsp;<a href="{{env 'CONSUL_API_URL'}}/features/filtering.html#expression-syntax" rel="help noopener noreferrer" target="_blank">Syntax Documentation</a>
+        {{/block-slot}}
+      {{/search-bar}}
+
     {{/block-slot}}
     {{#block-slot 'content'}}
-        {{#if (lt items.length 1)}}
-          <p>
-            There are no nodes{{if s ' matching that search' ''}}.
-          </p>
-        {{else}}
+
+      {{#if (or (is-undefined items) (lt items.length 1))}}
+        <p>
+          There are no nodes{{if s ' matching that search' ''}}.
+        </p>
+      {{else}}
         {{#consul-node-list items=items}}
           {{#block-slot 'data'}}{{/block-slot}}
         {{/consul-node-list}}
-        {{/if}}
+      {{/if}}
+
     {{/block-slot}}
   {{/app-view}}
 {{/with}}

@@ -90,6 +90,7 @@
     "ember-resolver": "^4.0.0",
     "ember-sinon-qunit": "^2.1.0",
     "ember-source": "~2.18.2",
+    "ember-string-helpers": "^1.0.2",
     "ember-test-selectors": "^1.0.0",
     "ember-truth-helpers": "^2.0.0",
     "ember-url": "^0.6.0",

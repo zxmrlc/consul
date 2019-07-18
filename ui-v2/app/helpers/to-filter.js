@@ -7,7 +7,10 @@ const convert = function(str, map) {
   });
   if (str.indexOf('"') === -1) {
     const replaced = str.replace(replacement[0], '');
-    return replacement[1].replace('%s', replaced).replace('%S', ucfirst(replaced));
+    return replacement[1]
+      .replace(/%s/g, replaced)
+      .replace('%S', ucfirst(replaced))
+      .trim();
   }
   return str;
 };

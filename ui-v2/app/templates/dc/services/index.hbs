@@ -1,8 +1,8 @@
 {{#with (array
       (array 'service:' 'Service.Service == "%s"')
       (array 'status:' 'Checks.Status == "%s"')
-      (array 'tags:' '"%s" IN Service.Tags')
-      (array 'tag:' '"%s" IN Service.Tags')
+      (array 'tags:' '"%s" in Service.Tags')
+      (array 'tag:' '"%s" in Service.Tags')
       (array '' 'Service.Service == "%s"')
   ) as |filtermap|}}
 

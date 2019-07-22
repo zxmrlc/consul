@@ -27,3 +27,6 @@
   outline: none !important;
   box-shadow: 0 0 5px $red-500;
 }
+%search-bar input {
+  -webkit-appearance: none;
+}

@@ -1,0 +1,15 @@
+html.template-notices table tr {
+  cursor: auto;
+}
+
+html.template-notices table tr > *:nth-child(1),
+html.template-notices table tr > *:nth-child(2) {
+  max-width: 10%;
+  display: table-cell;
+  vertical-align: top;
+}
+
+html.template-notices table td {
+  padding: 1em 0 !important;
+  height: auto;
+}

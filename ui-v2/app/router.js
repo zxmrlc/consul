@@ -99,6 +99,9 @@ export const routes = {
   settings: {
     _options: { path: '/setting' },
   },
+  notices: {
+    _options: { path: '/notices' },
+  },
   notfound: {
     _options: { path: '/*path' },
   },

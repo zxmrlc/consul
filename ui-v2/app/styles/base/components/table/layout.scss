@@ -39,6 +39,7 @@
 %table td:not(.actions) > *:only-child {
   text-overflow: ellipsis;
 }
+// TODO: Too generic, needs to be updated.
 %table td {
   height: 50px;
 }

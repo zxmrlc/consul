@@ -497,7 +497,7 @@ jobs:
     environment:
       EMBER_TEST_PARALLEL: true #enables test parallelization with ember-exam
       EMBER_TEST_REPORT: test-results/report.xml #outputs test report for CircleCI test summary
-    parallelism: 4
+    parallelism: 2
     steps:
       - checkout
       - restore_cache:
@@ -584,95 +584,95 @@ jobs:
 
 workflows:
   version: 2
-  go-tests:
-    jobs:
-      - check-vendor:
-          filters:
-            branches:
-              ignore:
-                - stable-website
-      - lint-consul-retry
-      - go-fmt-and-vet:
-          requires:
-            - check-vendor
-      - dev-build:
-          requires:
-            - go-fmt-and-vet
-      - go-test: &go-test
-          requires:
-            - dev-build
-      - go-test-api: *go-test
-      - coverage-merge:
-          requires:
-            - go-test
-            - go-test-api
-  build-distros:
-    jobs:
-      - check-vendor:
-          filters:
-            branches:
-              ignore:
-                - stable-website
-      - build-386: &require-check-vendor
-          requires:
-            - check-vendor
-      - build-amd64: *require-check-vendor
-      - build-arm: *require-check-vendor
-  test-integrations:
-    jobs:
-      - dev-build:
-          filters:
-            branches:
-              ignore:
-                - stable-website
-      - dev-upload-s3: &dev-upload
-          requires:
-            - dev-build
-          filters:
-            branches:
-              ignore:
-                - /^pull\/.*$/ # only push dev builds from non forks
-      - dev-upload-docker:
-          <<: *dev-upload
-          context: consul-ci
-      - nomad-integration-master:
-          requires:
-            - dev-build
-      - nomad-integration-0_8:
-          requires:
-            - dev-build
-      - envoy-integration-test-1.8.0:
-          requires:
-            - dev-build
-      - envoy-integration-test-1.9.1:
-          requires:
-            - dev-build
-      - envoy-integration-test-1.10.0:
-          requires:
-            - dev-build
-      - envoy-integration-test-1.11.1:
-          requires:
-            - dev-build
-      - vault-ca-provider:
-          requires:
-            - dev-build
-  website:
-    jobs:
-      - build-website
-      - docs-link-checker:
-          requires:
-            - build-website
-          filters:
-            branches:
-              ignore:
-                - /^pull\/.*$/ # only run link checker on non forks
-      - deploy-website:
-          requires:
-            - docs-link-checker
-          context: static-sites
-          filters:
-            branches:
-              only: stable-website
+  # go-tests:
+  #   jobs:
+  #     - check-vendor:
+  #         filters:
+  #           branches:
+  #             ignore:
+  #               - stable-website
+  #     - lint-consul-retry
+  #     - go-fmt-and-vet:
+  #         requires:
+  #           - check-vendor
+  #     - dev-build:
+  #         requires:
+  #           - go-fmt-and-vet
+  #     - go-test: &go-test
+  #         requires:
+  #           - dev-build
+  #     - go-test-api: *go-test
+  #     - coverage-merge:
+  #         requires:
+  #           - go-test
+  #           - go-test-api
+  # build-distros:
+  #   jobs:
+  #     - check-vendor:
+  #         filters:
+  #           branches:
+  #             ignore:
+  #               - stable-website
+  #     - build-386: &require-check-vendor
+  #         requires:
+  #           - check-vendor
+  #     - build-amd64: *require-check-vendor
+  #     - build-arm: *require-check-vendor
+  # test-integrations:
+  #   jobs:
+  #     - dev-build:
+  #         filters:
+  #           branches:
+  #             ignore:
+  #               - stable-website
+  #     - dev-upload-s3: &dev-upload
+  #         requires:
+  #           - dev-build
+  #         filters:
+  #           branches:
+  #             ignore:
+  #               - /^pull\/.*$/ # only push dev builds from non forks
+  #     - dev-upload-docker:
+  #         <<: *dev-upload
+  #         context: consul-ci
+  #     - nomad-integration-master:
+  #         requires:
+  #           - dev-build
+  #     - nomad-integration-0_8:
+  #         requires:
+  #           - dev-build
+  #     - envoy-integration-test-1.8.0:
+  #         requires:
+  #           - dev-build
+  #     - envoy-integration-test-1.9.1:
+  #         requires:
+  #           - dev-build
+  #     - envoy-integration-test-1.10.0:
+  #         requires:
+  #           - dev-build
+  #     - envoy-integration-test-1.11.1:
+  #         requires:
+  #           - dev-build
+  #     - vault-ca-provider:
+  #         requires:
+  #           - dev-build
+  # website:
+  #   jobs:
+  #     - build-website
+  #     - docs-link-checker:
+  #         requires:
+  #           - build-website
+  #         filters:
+  #           branches:
+  #             ignore:
+  #               - /^pull\/.*$/ # only run link checker on non forks
+  #     - deploy-website:
+  #         requires:
+  #           - docs-link-checker
+  #         context: static-sites
+  #         filters:
+  #           branches:
+  #             only: stable-website
   frontend:
     jobs:
       - frontend-cache:

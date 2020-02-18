@@ -407,6 +407,9 @@ proto: $(PROTOGOFILES) $(PROTOGOBINFILES)
 	@$(SHELL) $(CURDIR)/build-support/scripts/proto-gen.sh --grpc --import-replace "$<"
 
 
-.PHONY: all ci bin dev dist cov test test-ci test-internal cover format vet ui static-assets tools
+cherry-pick-check:
+	@$(SHELL) $(CURDIR)/build-support/scripts/cherry-pick-check.sh
+
+.PHONY: all ci bin dev dist cov test test-ci test-internal cover format vet ui static-assets tools cherry-pick-check
 .PHONY: docker-images go-build-image ui-build-image static-assets-docker consul-docker ui-docker
 .PHONY: version proto proto-rebuild proto-delete test-envoy-integ

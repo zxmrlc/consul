@@ -83,8 +83,16 @@ func (e ForbiddenError) Error() string {
 // TODO: rename this struct to something more appropriate. It is an http.Handler,
 // request router or multiplexer, but it is not a Server.
 type HTTPServer struct {
-	agent    *Agent
-	denylist *Denylist
+	agent     *Agent
+	denylist  *Denylist
+	endpoints map[string]endpoint_
+}
+
+type endpoint_ struct {
+	fn func(resp http.ResponseWriter, req *http.Request) (interface{}, error)
+	// methods is a slice of supported HTTP methods.
+	// An empty slice means an endpoint handles OPTIONS requests and MethodNotFound errors itself.
+	methods []string
 }
 
 // bufferedFile implements os.File and allows us to modify a file from disk by
@@ -212,35 +220,6 @@ func (fs *settingsInjectedIndexFS) Open(name string) (http.File, error) {
 	return newBufferedFile(bytes.NewBuffer(content), file), nil
 }
 
-// endpoint is a Consul-specific HTTP handler that takes the usual arguments in
-// but returns a response object and error, both of which are handled in a
-// common manner by Consul's HTTP server.
-type endpoint func(resp http.ResponseWriter, req *http.Request) (interface{}, error)
-
-// unboundEndpoint is an endpoint method on a server.
-type unboundEndpoint func(s *HTTPServer, resp http.ResponseWriter, req *http.Request) (interface{}, error)
-
-// endpoints is a map from URL pattern to unbound endpoint.
-var endpoints map[string]unboundEndpoint
-
-// allowedMethods is a map from endpoint prefix to supported HTTP methods.
-// An empty slice means an endpoint handles OPTIONS requests and MethodNotFound errors itself.
-var allowedMethods map[string][]string = make(map[string][]string)
-
-// registerEndpoint registers a new endpoint, which should be done at package
-// init() time.
-func registerEndpoint(pattern string, methods []string, fn unboundEndpoint) {
-	if endpoints == nil {
-		endpoints = make(map[string]unboundEndpoint)
-	}
-	if endpoints[pattern] != nil || allowedMethods[pattern] != nil {
-		panic(fmt.Errorf("Pattern %q is already registered", pattern))
-	}
-
-	endpoints[pattern] = fn
-	allowedMethods[pattern] = methods
-}
-
 // wrappedMux hangs on to the underlying mux for unit tests.
 type wrappedMux struct {
 	mux     *http.ServeMux
@@ -333,13 +312,8 @@ func (s *HTTPServer) handler(enableDebug bool) http.Handler {
 		handleFuncMetrics(pattern, http.HandlerFunc(wrapper))
 	}
 	mux.HandleFunc("/", s.Index)
-	for pattern, fn := range endpoints {
-		thisFn := fn
-		methods := allowedMethods[pattern]
-		bound := func(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
-			return thisFn(s, resp, req)
-		}
-		handleFuncMetrics(pattern, s.wrap(bound, methods))
+	for pattern, endpoint := range s.endpoints {
+		handleFuncMetrics(pattern, s.wrap(endpoint.fn, endpoint.methods))
 	}
 
 	// Register wrapped pprof handlers
@@ -432,7 +406,14 @@ var (
 	aclEndpointRE = regexp.MustCompile("^(/v1/acl/(create|update|destroy|info|clone|list)/)([^?]+)([?]?.*)$")
 )
 
+// endpoint is a Consul-specific HTTP handler that takes the usual arguments in
+// but returns a response object and error, both of which are handled in a
+// common manner by Consul's HTTP server.
+// TODO: remove
+type endpoint func(resp http.ResponseWriter, req *http.Request) (interface{}, error)
+
 // wrap is used to wrap functions to make them more convenient
+// TODO: rename and document the purpose of this function
 func (s *HTTPServer) wrap(handler endpoint, methods []string) http.HandlerFunc {
 	httpLogger := s.agent.logger.Named(logging.HTTP)
 	return func(resp http.ResponseWriter, req *http.Request) {

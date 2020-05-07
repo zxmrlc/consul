@@ -755,8 +755,9 @@ func (a *Agent) listenHTTP() ([]apiServer, error) {
 			}
 
 			srv := &HTTPServer{
-				agent:    a,
-				denylist: NewDenylist(a.config.HTTPBlockEndpoints),
+				agent:     a,
+				denylist:  NewDenylist(a.config.HTTPBlockEndpoints),
+				endpoints: getEndpoints(a),
 			}
 			httpServer := &http.Server{
 				Addr:      l.Addr().String(),

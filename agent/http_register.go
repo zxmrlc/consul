@@ -1,6 +1,23 @@
 package agent
 
-func init() {
+import "net/http"
+
+type unboundEndpoint func(s *HTTPServer, resp http.ResponseWriter, req *http.Request) (interface{}, error)
+
+func getEndpoints(a *Agent) map[string]endpoint_ {
+	result := make(map[string]endpoint_)
+	// TODO: split HTTPServer into one type for the endpoints, and one for the handler
+	httpServer := &HTTPServer{agent: a}
+
+	// registerEndpoint exists to support the old way of registering endpoints.
+	// New endpoints should be added to the result map directly
+	registerEndpoint := func(pattern string, methods []string, fn unboundEndpoint) {
+		bound := func(resp http.ResponseWriter, req *http.Request) (interface{}, error) {
+			return fn(httpServer, resp, req)
+		}
+		result[pattern] = endpoint_{fn: bound, methods: methods}
+	}
+
 	registerEndpoint("/v1/acl/bootstrap", []string{"PUT"}, (*HTTPServer).ACLBootstrap)
 	registerEndpoint("/v1/acl/create", []string{"PUT"}, (*HTTPServer).ACLCreate)
 	registerEndpoint("/v1/acl/update", []string{"PUT"}, (*HTTPServer).ACLUpdate)
@@ -120,4 +137,7 @@ func init() {
 	registerEndpoint("/v1/status/peers", []string{"GET"}, (*HTTPServer).StatusPeers)
 	registerEndpoint("/v1/snapshot", []string{"GET", "PUT"}, (*HTTPServer).Snapshot)
 	registerEndpoint("/v1/txn", []string{"PUT"}, (*HTTPServer).Txn)
+
+	// TODO: call method to add enterprise endpoints
+	return result
 }

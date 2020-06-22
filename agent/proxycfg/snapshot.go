@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/mitchellh/copystructure"
 )
@@ -252,18 +253,20 @@ func (k *IngressListenerKey) RouteName() string {
 // It is meant to be point-in-time coherent and is used to deliver the current
 // config state to observers who need it to be pushed in (e.g. XDS server).
 type ConfigSnapshot struct {
-	Kind            structs.ServiceKind
-	Service         string
-	ProxyID         structs.ServiceID
-	Address         string
-	Port            int
-	ServiceMeta     map[string]string
-	TaggedAddresses map[string]structs.ServiceAddress
-	Proxy           structs.ConnectProxyConfig
-	Datacenter      string
+	Kind             structs.ServiceKind
+	Service          string
+	ProxyID          structs.ServiceID
+	Address          string
+	Port             int
+	ServiceMeta      map[string]string
+	TaggedAddresses  map[string]structs.ServiceAddress
+	Proxy            structs.ConnectProxyConfig
+	Datacenter       string
+	DefaultACLPolicy acl.EnforcementDecision
 
 	ServerSNIFn ServerSNIFunc
 	Roots       *structs.IndexedCARoots
+	Intentions  structs.Intentions // TODO(rbac-ixns): should this show up in Valid()?
 
 	// connect-proxy specific
 	ConnectProxy configSnapshotConnectProxy
@@ -276,16 +279,16 @@ type ConfigSnapshot struct {
 
 	// ingress-gateway specific
 	IngressGateway configSnapshotIngressGateway
-
-	// Skip intentions for now as we don't push those down yet, just pre-warm them.
 }
 
 // Valid returns whether or not the snapshot has all required fields filled yet.
 func (s *ConfigSnapshot) Valid() bool {
 	switch s.Kind {
 	case structs.ServiceKindConnectProxy:
+		// TODO(rbac-ixns): intentions go here?
 		return s.Roots != nil && s.ConnectProxy.Leaf != nil
 	case structs.ServiceKindTerminatingGateway:
+		// TODO(rbac-ixns): intentions go here?
 		return s.Roots != nil
 	case structs.ServiceKindMeshGateway:
 		if s.ServiceMeta[structs.MetaWANFederationKey] == "1" {
@@ -295,6 +298,7 @@ func (s *ConfigSnapshot) Valid() bool {
 		}
 		return s.Roots != nil && (s.MeshGateway.WatchedServicesSet || len(s.MeshGateway.ServiceGroups) > 0)
 	case structs.ServiceKindIngressGateway:
+		// TODO(rbac-ixns): intentions go here?
 		return s.Roots != nil &&
 			s.IngressGateway.Leaf != nil &&
 			s.IngressGateway.TLSSet &&

@@ -402,15 +402,25 @@ func makeListenerFromUserConfig(configJSON string) (*envoy.Listener, error) {
 // specify custom listener params in config but still get our certs delivered
 // dynamically and intentions enforced without coming up with some complicated
 // templating/merging solution.
-func injectConnectFilters(cfgSnap *proxycfg.ConfigSnapshot, token string, listener *envoy.Listener) error {
+func (s *Server) injectConnectFilters(cfgSnap *proxycfg.ConfigSnapshot, token string, listener *envoy.Listener) error {
 	authFilter, err := makeExtAuthFilter(token)
 	if err != nil {
 		return err
 	}
+	_ = authFilter
+
+	rbacFilter, err := makeRBACNetworkFilter(cfgSnap, s.Logger)
+	if err != nil {
+		return err
+	}
+
 	for idx := range listener.FilterChains {
 		// Insert our authz filter before any others
 		listener.FilterChains[idx].Filters =
-			append([]*envoylistener.Filter{authFilter}, listener.FilterChains[idx].Filters...)
+			append([]*envoylistener.Filter{
+				rbacFilter,
+				// authFilter,
+			}, listener.FilterChains[idx].Filters...)
 
 		listener.FilterChains[idx].TlsContext = &envoyauth.DownstreamTlsContext{
 			CommonTlsContext:         makeCommonTLSContextFromLeaf(cfgSnap, cfgSnap.Leaf()),
@@ -474,7 +484,7 @@ func (s *Server) makePublicListener(cfgSnap *proxycfg.ConfigSnapshot, token stri
 		}
 	}
 
-	err = injectConnectFilters(cfgSnap, token, l)
+	err = s.injectConnectFilters(cfgSnap, token, l)
 	return l, err
 }
 

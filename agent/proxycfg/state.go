@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/cache"
 	cachetype "github.com/hashicorp/consul/agent/cache-types"
 	"github.com/hashicorp/consul/agent/structs"
@@ -50,11 +51,12 @@ const (
 // is discarded and a new one created.
 type state struct {
 	// logger, source and cache are required to be set before calling Watch.
-	logger      hclog.Logger
-	source      *structs.QuerySource
-	cache       CacheNotifier
-	dnsConfig   DNSConfig
-	serverSNIFn ServerSNIFunc
+	logger           hclog.Logger
+	source           *structs.QuerySource
+	cache            CacheNotifier
+	dnsConfig        DNSConfig
+	serverSNIFn      ServerSNIFunc
+	defaultACLPolicy acl.EnforcementDecision
 
 	// ctx and cancel store the context created during initWatches call
 	ctx    context.Context
@@ -143,16 +145,19 @@ func newState(ns *structs.NodeService, token string) (*state, error) {
 		meta[k] = v
 	}
 
+	defaultACLPolicy := acl.Deny // TODO(rbac-ixns)
+
 	return &state{
-		kind:            ns.Kind,
-		service:         ns.Service,
-		proxyID:         ns.CompoundServiceID(),
-		address:         ns.Address,
-		port:            ns.Port,
-		meta:            meta,
-		taggedAddresses: taggedAddresses,
-		proxyCfg:        proxyCfg,
-		token:           token,
+		kind:             ns.Kind,
+		service:          ns.Service,
+		proxyID:          ns.CompoundServiceID(),
+		address:          ns.Address,
+		port:             ns.Port,
+		meta:             meta,
+		taggedAddresses:  taggedAddresses,
+		proxyCfg:         proxyCfg,
+		token:            token,
+		defaultACLPolicy: defaultACLPolicy,
 		// 10 is fairly arbitrary here but allow for the 3 mandatory and a
 		// reasonable number of upstream watches to all deliver their initial
 		// messages in parallel without blocking the cache.Notify loops. It's not a
@@ -523,16 +528,17 @@ func (s *state) initWatchesIngressGateway() error {
 
 func (s *state) initialConfigSnapshot() ConfigSnapshot {
 	snap := ConfigSnapshot{
-		Kind:            s.kind,
-		Service:         s.service,
-		ProxyID:         s.proxyID,
-		Address:         s.address,
-		Port:            s.port,
-		ServiceMeta:     s.meta,
-		TaggedAddresses: s.taggedAddresses,
-		Proxy:           s.proxyCfg,
-		Datacenter:      s.source.Datacenter,
-		ServerSNIFn:     s.serverSNIFn,
+		Kind:             s.kind,
+		Service:          s.service,
+		ProxyID:          s.proxyID,
+		Address:          s.address,
+		Port:             s.port,
+		ServiceMeta:      s.meta,
+		TaggedAddresses:  s.taggedAddresses,
+		Proxy:            s.proxyCfg,
+		Datacenter:       s.source.Datacenter,
+		ServerSNIFn:      s.serverSNIFn,
+		DefaultACLPolicy: s.defaultACLPolicy,
 	}
 
 	switch s.kind {
@@ -691,7 +697,15 @@ func (s *state) handleUpdateConnectProxy(u cache.UpdateEvent, snap *ConfigSnapsh
 		}
 		snap.Roots = roots
 	case u.CorrelationID == intentionsWatchID:
-		// no-op: Intentions don't get stored in the snapshot, calls to ConnectAuthorize will fetch them from the cache
+		// TODO(rbac-ixns)
+		resp, ok := u.Result.(*structs.IndexedIntentionMatches)
+		if !ok {
+			return fmt.Errorf("invalid type for response: %T", u.Result)
+		}
+		if len(resp.Matches) != 1 {
+			return fmt.Errorf("Internal error loading matches")
+		}
+		snap.Intentions = resp.Matches[0]
 
 	case strings.HasPrefix(u.CorrelationID, "upstream:"+preparedQueryIDPrefix):
 		resp, ok := u.Result.(*structs.PreparedQueryExecuteResponse)
@@ -1120,6 +1134,7 @@ func (s *state) handleUpdateTerminatingGateway(u cache.UpdateEvent, snap *Config
 	// nolint: staticcheck // github.com/dominikh/go-tools/issues/580
 	case strings.HasPrefix(u.CorrelationID, serviceIntentionsIDPrefix):
 		// no-op: Intentions don't get stored in the snapshot, calls to ConnectAuthorize will fetch them from the cache
+		// TODO(rbac-ixns)
 
 	default:
 		// do nothing

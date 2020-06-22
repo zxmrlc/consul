@@ -1,0 +1,48 @@
+{
+  "name": "envoy.filters.network.rbac",
+  "config": {
+      "rules": {
+            "policies": {
+                  "consul-compiled-intentions-0": {
+                        "condition": {
+                              "call_expr": {
+                                    "args": [
+                                          {
+                                                "id": "3",
+                                                "select_expr": {
+                                                      "field": "uri_san_peer_certificate",
+                                                      "operand": {
+                                                            "id": "2",
+                                                            "ident_expr": {
+                                                                  "name": "connection"
+                                                                }
+                                                          }
+                                                    }
+                                              },
+                                          {
+                                                "const_expr": {
+                                                      "string_value": "^spiffe://[^/]+/ns/[^/]+/dc/[^/]+/svc/[^/]+$"
+                                                    },
+                                                "id": "6"
+                                              }
+                                        ],
+                                    "function": "matches"
+                                  },
+                              "id": "1"
+                            },
+                        "permissions": [
+                              {
+                                    "any": true
+                                  }
+                            ],
+                        "principals": [
+                              {
+                                    "any": true
+                                  }
+                            ]
+                      }
+                }
+          },
+      "stat_prefix": "connect_authz"
+    }
+}

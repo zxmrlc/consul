@@ -50,11 +50,12 @@ const (
 // is discarded and a new one created.
 type state struct {
 	// logger, source and cache are required to be set before calling Watch.
-	logger      hclog.Logger
-	source      *structs.QuerySource
-	cache       CacheNotifier
-	dnsConfig   DNSConfig
-	serverSNIFn ServerSNIFunc
+	logger                hclog.Logger
+	source                *structs.QuerySource
+	cache                 CacheNotifier
+	dnsConfig             DNSConfig
+	serverSNIFn           ServerSNIFunc
+	intentionDefaultAllow bool
 
 	// ctx and cancel store the context created during initWatches call
 	ctx    context.Context
@@ -523,16 +524,17 @@ func (s *state) initWatchesIngressGateway() error {
 
 func (s *state) initialConfigSnapshot() ConfigSnapshot {
 	snap := ConfigSnapshot{
-		Kind:            s.kind,
-		Service:         s.service,
-		ProxyID:         s.proxyID,
-		Address:         s.address,
-		Port:            s.port,
-		ServiceMeta:     s.meta,
-		TaggedAddresses: s.taggedAddresses,
-		Proxy:           s.proxyCfg,
-		Datacenter:      s.source.Datacenter,
-		ServerSNIFn:     s.serverSNIFn,
+		Kind:                  s.kind,
+		Service:               s.service,
+		ProxyID:               s.proxyID,
+		Address:               s.address,
+		Port:                  s.port,
+		ServiceMeta:           s.meta,
+		TaggedAddresses:       s.taggedAddresses,
+		Proxy:                 s.proxyCfg,
+		Datacenter:            s.source.Datacenter,
+		ServerSNIFn:           s.serverSNIFn,
+		IntentionDefaultAllow: s.intentionDefaultAllow,
 	}
 
 	switch s.kind {
@@ -691,7 +693,17 @@ func (s *state) handleUpdateConnectProxy(u cache.UpdateEvent, snap *ConfigSnapsh
 		}
 		snap.Roots = roots
 	case u.CorrelationID == intentionsWatchID:
-		// no-op: Intentions don't get stored in the snapshot, calls to ConnectAuthorize will fetch them from the cache
+		resp, ok := u.Result.(*structs.IndexedIntentionMatches)
+		if !ok {
+			return fmt.Errorf("invalid type for response: %T", u.Result)
+		}
+		if len(resp.Matches) > 0 {
+			// RPC supports matching multiple services at once but we only ever
+			// query with the one service we represent currently so just pick
+			// the one result set up.
+			snap.ConnectProxy.Intentions = resp.Matches[0]
+		}
+		snap.ConnectProxy.IntentionsSet = true
 
 	case strings.HasPrefix(u.CorrelationID, "upstream:"+preparedQueryIDPrefix):
 		resp, ok := u.Result.(*structs.PreparedQueryExecuteResponse)
@@ -1120,6 +1132,7 @@ func (s *state) handleUpdateTerminatingGateway(u cache.UpdateEvent, snap *Config
 	// nolint: staticcheck // github.com/dominikh/go-tools/issues/580
 	case strings.HasPrefix(u.CorrelationID, serviceIntentionsIDPrefix):
 		// no-op: Intentions don't get stored in the snapshot, calls to ConnectAuthorize will fetch them from the cache
+		// TODO(rbac-ixns)
 
 	default:
 		// do nothing

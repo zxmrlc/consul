@@ -529,12 +529,19 @@ function must_fail_tcp_connection {
 # to generate a 503 response since the upstreams have refused connection.
 function must_fail_http_connection {
   # Attempt to curl through upstream
-  run curl -s -i -d hello $1
+  run curl -s -i -d hello "$1"
 
   echo "OUTPUT $output"
 
+  # from 1.12.0 on we can expect a different failure
+  if [[ "$ENVOY_VERSION" =~ ^1\.1[01]\. ]]; then
+      local expect_response="${2:-503 Service Unavailable}"
+  else
+      local expect_response="${2:-403 Forbidden}"
+      :
+  fi
   # Should fail request with 503
-  echo "$output" | grep '503 Service Unavailable'
+  echo "$output" | grep "${expect_response}"
 }
 
 function gen_envoy_bootstrap {

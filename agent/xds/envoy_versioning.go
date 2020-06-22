@@ -13,10 +13,13 @@ var (
 	//
 	// NOTE: the first version that no longer supported the old style was 1.13.0
 	minSafeRegexVersion = version.Must(version.NewVersion("1.11.2"))
+
+	minSafeRBACVersion = version.Must(version.NewVersion("1.12.0"))
 )
 
 type supportedProxyFeatures struct {
 	RouterMatchSafeRegex bool // use safe_regex instead of regex in http.router rules
+	RBACIntentions       bool // use envoy rbac instead of ext_authz for intentions
 }
 
 func determineSupportedProxyFeatures(node *envoycore.Node) supportedProxyFeatures {
@@ -25,8 +28,24 @@ func determineSupportedProxyFeatures(node *envoycore.Node) supportedProxyFeature
 		return supportedProxyFeatures{}
 	}
 
+	return determineSupportedProxyFeaturesFromVersion(version)
+}
+
+func determineSupportedProxyFeaturesFromString(vs string) supportedProxyFeatures {
+	version := version.Must(version.NewVersion(vs))
+	return determineSupportedProxyFeaturesFromVersion(version)
+}
+
+func determineSupportedProxyFeaturesFromVersion(version *version.Version) supportedProxyFeatures {
+	routerMatchSafeRegex := !version.LessThan(minSafeRegexVersion)
+	rbacIntentions := !version.LessThan(minSafeRBACVersion)
 	return supportedProxyFeatures{
-		RouterMatchSafeRegex: !version.LessThan(minSafeRegexVersion),
+		RouterMatchSafeRegex: routerMatchSafeRegex,
+		// The RBAC spiffe principal checks exclusively use safe_regex. This is
+		// just a belt-and-suspenders check combining the two together in the
+		// unlikely event the minSafe versions for these get inverted for some
+		// reason.
+		RBACIntentions: rbacIntentions && routerMatchSafeRegex,
 	}
 }
 
@@ -73,11 +92,4 @@ func determineEnvoyVersionFromNode(node *envoycore.Node) *version.Version {
 			v.GetPatch(),
 		),
 	))
-}
-
-func determineSupportedProxyFeaturesFromString(vs string) supportedProxyFeatures {
-	version := version.Must(version.NewVersion(vs))
-	return supportedProxyFeatures{
-		RouterMatchSafeRegex: !version.LessThan(minSafeRegexVersion),
-	}
 }

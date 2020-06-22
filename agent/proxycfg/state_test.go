@@ -482,6 +482,15 @@ func TestState_WatchesAndUpdates(t *testing.T) {
 					Err:           nil,
 				},
 				{
+					CorrelationID: intentionsWatchID,
+					Result: &structs.IndexedIntentionMatches{
+						Matches: []structs.Intentions{
+							structs.Intentions(nil),
+						},
+					},
+					Err: nil,
+				},
+				{
 					CorrelationID: "discovery-chain:api",
 					Result: &structs.DiscoveryChainResponse{
 						Chain: discoverychain.TestCompileConfigEntries(t, "api", "default", "dc1", "trustdomain.consul", "dc1",

@@ -69,12 +69,11 @@ func (s *Intention) prepareApplyCreate(ident structs.ACLIdentity, authz acl.Auth
 	args.Intention.CreatedAt = time.Now().UTC()
 	args.Intention.UpdatedAt = args.Intention.CreatedAt
 
-	// Default source type
-	if args.Intention.SourceType == "" {
-		args.Intention.SourceType = structs.IntentionSourceConsul
-	}
-
 	args.Intention.DefaultNamespaces(entMeta)
+
+	if err := args.Intention.Normalize(); err != nil {
+		return err
+	}
 
 	if err := s.validateEnterpriseIntention(args.Intention); err != nil {
 		return err
@@ -82,9 +81,6 @@ func (s *Intention) prepareApplyCreate(ident structs.ACLIdentity, authz acl.Auth
 
 	// Validate. We do not validate on delete since it is valid to only
 	// send an ID in that case.
-	// Set the precedence
-	args.Intention.UpdatePrecedence()
-
 	if err := args.Intention.Validate(); err != nil {
 		return err
 	}
@@ -132,19 +128,15 @@ func (s *Intention) prepareApplyUpdate(ident structs.ACLIdentity, authz acl.Auth
 	// We always update the updatedat field.
 	args.Intention.UpdatedAt = time.Now().UTC()
 
-	// Default source type
-	if args.Intention.SourceType == "" {
-		args.Intention.SourceType = structs.IntentionSourceConsul
-	}
-
 	args.Intention.DefaultNamespaces(entMeta)
+
+	if err := args.Intention.Normalize(); err != nil {
+		return err
+	}
 
 	if err := s.validateEnterpriseIntention(args.Intention); err != nil {
 		return err
 	}
-
-	// Set the precedence
-	args.Intention.UpdatePrecedence()
 
 	// Validate. We do not validate on delete since it is valid to only
 	// send an ID in that case.

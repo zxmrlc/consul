@@ -2,8 +2,12 @@ package xds
 
 import (
 	"fmt"
+	"strings"
 
 	envoylistener "github.com/envoyproxy/go-control-plane/envoy/api/v2/listener"
+	envoyroute "github.com/envoyproxy/go-control-plane/envoy/api/v2/route"
+	envoyhttprbac "github.com/envoyproxy/go-control-plane/envoy/config/filter/http/rbac/v2"
+	envoyhttp "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/http_connection_manager/v2"
 	envoynetrbac "github.com/envoyproxy/go-control-plane/envoy/config/filter/network/rbac/v2"
 	envoyrbac "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v2"
 	"github.com/google/cel-go/cel"
@@ -25,7 +29,7 @@ import (
 //
 // https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/security/rbac_filter
 func makeRBACNetworkFilter(cfgSnap *proxycfg.ConfigSnapshot, _ hclog.Logger) (*envoylistener.Filter, error) {
-	rules, err := makeRBACRules(cfgSnap)
+	rules, err := makeRBACRules(cfgSnap, false)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +40,19 @@ func makeRBACNetworkFilter(cfgSnap *proxycfg.ConfigSnapshot, _ hclog.Logger) (*e
 		// ShadowRules: rules, // TODO
 	}
 	return makeFilter("envoy.filters.network.rbac", cfg)
+}
+
+func makeRBACHTTPFilter(cfgSnap *proxycfg.ConfigSnapshot, _ hclog.Logger) (*envoyhttp.HttpFilter, error) {
+	rules, err := makeRBACRules(cfgSnap, true)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &envoyhttprbac.RBAC{
+		Rules: rules,
+		// ShadowRules: &rules, // TODO
+	}
+	return makeEnvoyHTTPFilter("envoy.filters.http.rbac", cfg)
 }
 
 func makeSpiffePattern(sourceNS, sourceName string) string {
@@ -59,7 +76,7 @@ func makeSpiffePattern(sourceNS, sourceName string) string {
 // L7: https://www.envoyproxy.io/docs/envoy/v1.12.0/configuration/http/http_filters/rbac_filter
 //
 // https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/security/rbac_filter
-func makeRBACRules(cfgSnap *proxycfg.ConfigSnapshot) (*envoyrbac.RBAC, error) {
+func makeRBACRules(cfgSnap *proxycfg.ConfigSnapshot, isHTTP bool) (*envoyrbac.RBAC, error) {
 	//TODO(rbac-ixns)
 
 	// Note that we DON'T explicitly validate the trust-domain matches ours. See
@@ -69,7 +86,7 @@ func makeRBACRules(cfgSnap *proxycfg.ConfigSnapshot) (*envoyrbac.RBAC, error) {
 
 	var cm celMemory
 
-	cm.SetIntentions(cfgSnap.Intentions)
+	cm.SetIntentions(cfgSnap.Intentions, isHTTP)
 
 	rbacAction := cm.FlattenForDefaultPolicy(cfgSnap.DefaultACLPolicy)
 	policies, err := cm.GenerateRBACPolicies()
@@ -111,10 +128,14 @@ func (m *celMemory) GenerateRBACPolicies() (map[string]*envoyrbac.Policy, error)
 				// 	},
 				// }},
 			},
-			Permissions: []*envoyrbac.Permission{
-				{Rule: &envoyrbac.Permission_Any{Any: true}},
-			},
 			Condition: ast.Expr(),
+		}
+		if snip.permission != nil {
+			policy.Permissions = []*envoyrbac.Permission{snip.permission}
+		} else {
+			policy.Permissions = []*envoyrbac.Permission{
+				{Rule: &envoyrbac.Permission_Any{Any: true}},
+			}
 		}
 
 		policyID := fmt.Sprintf("consul-compiled-intentions-%d", i)
@@ -140,7 +161,7 @@ func (m *celMemory) MacroExpander() celparser.Macro {
 	return celparser.NewGlobalMacro("stringvar", 1, stringIDMacroExpander(m.stringConstants))
 }
 
-func (m *celMemory) SetIntentions(ixns structs.Intentions) error {
+func (m *celMemory) SetIntentions(ixns structs.Intentions, isHTTP bool) error {
 	m.stringConstants = make([]string, 0, len(ixns))
 	for _, ixn := range ixns {
 		// we only care about the source end here; the dest was taken care of by the rest
@@ -157,10 +178,146 @@ func (m *celMemory) SetIntentions(ixns structs.Intentions) error {
 			),
 		)
 
+		if isHTTP {
+			if len(ixn.RouteMatches) > 0 {
+				perm, err := m.generatePermission(ixn)
+				if err != nil {
+					return err
+				}
+				snippet.permission = perm
+			}
+		}
+
 		m.snippets = append(m.snippets, snippet)
 	}
 
 	return nil
+}
+
+// TODO: do smooshing as well
+func (m *celMemory) generatePermission(ixn *structs.Intention) (*envoyrbac.Permission, error) {
+	if len(ixn.RouteMatches) == 0 {
+		return nil, nil
+	}
+
+	// TODO(l7-ixn) handle default-allow
+
+	var orRules []*envoyrbac.Permission
+	for _, routeMatch := range ixn.RouteMatches {
+		if routeMatch.HTTP == nil {
+			continue // not possible
+		}
+		matchHTTP := routeMatch.HTTP
+
+		var andRules []*envoyrbac.Permission
+		andHeader := func(em *envoyroute.HeaderMatcher) {
+			andRules = append(andRules, &envoyrbac.Permission{
+				Rule: &envoyrbac.Permission_Header{
+					Header: em,
+				},
+			})
+		}
+
+		// // Handle path portion of intention.
+		if matchHTTP.PathExact != "" {
+			andHeader(&envoyroute.HeaderMatcher{
+				Name: ":path",
+				HeaderMatchSpecifier: &envoyroute.HeaderMatcher_ExactMatch{
+					ExactMatch: matchHTTP.PathExact,
+				},
+			})
+		} else if matchHTTP.PathPrefix != "" {
+			andHeader(&envoyroute.HeaderMatcher{
+				Name: ":path",
+				HeaderMatchSpecifier: &envoyroute.HeaderMatcher_PrefixMatch{
+					PrefixMatch: matchHTTP.PathPrefix,
+				},
+			})
+		} else if matchHTTP.PathRegex != "" {
+			andHeader(&envoyroute.HeaderMatcher{
+				Name: ":path",
+				HeaderMatchSpecifier: &envoyroute.HeaderMatcher_RegexMatch{
+					RegexMatch: matchHTTP.PathRegex,
+				},
+			})
+		}
+
+		if len(matchHTTP.Header) > 0 {
+			for _, hdr := range matchHTTP.Header {
+				em := &envoyroute.HeaderMatcher{
+					Name: hdr.Name,
+				}
+
+				switch {
+				case hdr.Present:
+					em.HeaderMatchSpecifier = &envoyroute.HeaderMatcher_PresentMatch{
+						PresentMatch: true,
+					}
+				case hdr.Exact != "":
+					em.HeaderMatchSpecifier = &envoyroute.HeaderMatcher_ExactMatch{
+						ExactMatch: hdr.Exact,
+					}
+				case hdr.Prefix != "":
+					em.HeaderMatchSpecifier = &envoyroute.HeaderMatcher_PrefixMatch{
+						PrefixMatch: hdr.Prefix,
+					}
+				case hdr.Suffix != "":
+					em.HeaderMatchSpecifier = &envoyroute.HeaderMatcher_SuffixMatch{
+						SuffixMatch: hdr.Suffix,
+					}
+				case hdr.Regex != "":
+					em.HeaderMatchSpecifier = &envoyroute.HeaderMatcher_RegexMatch{
+						RegexMatch: hdr.Regex,
+					}
+				default:
+					continue // skip this impossible situation
+				}
+
+				if hdr.Invert {
+					em.InvertMatch = true
+				}
+
+				andRules = append(andRules, &envoyrbac.Permission{
+					Rule: &envoyrbac.Permission_Header{
+						Header: em,
+					},
+				})
+			}
+		}
+
+		if len(matchHTTP.Methods) > 0 {
+			andRules = append(andRules, &envoyrbac.Permission{
+				Rule: &envoyrbac.Permission_Header{
+					Header: &envoyroute.HeaderMatcher{
+						Name: ":method",
+						HeaderMatchSpecifier: &envoyroute.HeaderMatcher_RegexMatch{
+							RegexMatch: strings.Join(matchHTTP.Methods, "|"),
+						},
+					},
+				},
+			})
+		}
+
+		if len(andRules) > 0 {
+			orRules = append(orRules, &envoyrbac.Permission{
+				Rule: &envoyrbac.Permission_AndRules{
+					AndRules: &envoyrbac.Permission_Set{
+						Rules: andRules,
+					},
+				},
+			})
+		}
+	}
+
+	permStruct := &envoyrbac.Permission{
+		Rule: &envoyrbac.Permission_OrRules{
+			OrRules: &envoyrbac.Permission_Set{
+				Rules: orRules,
+			},
+		},
+	}
+
+	return permStruct, nil
 }
 
 // Normalize: if we are in default-deny, all of our actual clauses must be allows
@@ -178,6 +335,9 @@ func (m *celMemory) FlattenForDefaultPolicy(defaultACLPolicy acl.EnforcementDeci
 				if snip.allow {
 					mod = append(mod, snip)
 				} else {
+					if snip.permission != nil {
+						panic("oops; what does this even mean?")
+					}
 					for j := i + 1; j < len(m.snippets); j++ {
 						snip2 := m.snippets[j]
 
@@ -189,7 +349,22 @@ func (m *celMemory) FlattenForDefaultPolicy(defaultACLPolicy acl.EnforcementDeci
 			m.snippets = mod
 		}
 
-		// At this point precedence doesn't matter since all roads lead to allow.
+		if len(m.snippets) > 1 {
+			// Remove precedence with logic.
+			//
+			// If we have L7 conditions, act like we had
+			// an L7 intention and an L4 intention with the opposite
+			// action immediately following it.
+			for i, snip := range m.snippets {
+				if !snip.allow {
+					panic("oops") // TODO
+				}
+				for j := i + 1; j < len(m.snippets); j++ {
+					snip2 := m.snippets[j]
+					snip2.identityClause = "(" + snip2.identityClause + ") AND !(" + snip.identityClause + ")"
+				}
+			}
+		}
 
 		// Note this feels a little bit backwards.
 		//
@@ -211,6 +386,8 @@ type celSnippet struct {
 	identityClause string // CEL
 	allow          bool
 	precedence     int // TODO(rbac-ixns): use this to optimize how the collapse works
+
+	permission *envoyrbac.Permission
 }
 
 // stringIDMacroExpander returns a macro expander that accepts 1 numeric

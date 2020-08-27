@@ -445,20 +445,17 @@ func (a *Agent) Start(ctx context.Context) error {
 
 	// TODO: move userEventHandler before Agent.New()
 	remoteExec := &remoteExecHandler{
-		logger: a.logger,
-		config: RemoteExecConfig{
-			NodeName:     a.config.NodeName,
-			Datacenter:   a.config.Datacenter,
-			AgentTokener: a.tokens,
-			KV:           &kv.Client{NetRPC: a},
-		},
+		Logger:       a.logger,
+		AgentTokener: a.tokens,
+		KV:           &kv.Client{NetRPC: a},
 	}
-	a.userEventHandler = newUserEventHandler(UserEventHandlerConfig{
-		NodeName:          a.config.NodeName,
-		DisableRemoteExec: a.config.DisableRemoteExec,
-		Services:          a.State,
-		HandleRemoteExec:  remoteExec.handle,
-	}, a.logger)
+	a.userEventHandler = newUserEventHandler(
+		UserEventHandlerDeps{
+			Services:         a.State,
+			HandleRemoteExec: remoteExec.handle,
+			Logger:           a.logger,
+		},
+		runtimeToUserEventHandlerConfig(a.config))
 
 	// create the config for the rpc server/client
 	consulCfg, err := newConsulConfig(a.config, a.logger)
@@ -3608,6 +3605,8 @@ func (a *Agent) reloadConfigInternal(newCfg *config.RuntimeConfig) error {
 		}
 	}
 
+	a.userEventHandler.SetConfig(runtimeToUserEventHandlerConfig(newCfg))
+
 	// this only gets used by the consulConfig function and since
 	// that is only ever done during init and reload here then
 	// an in place modification is safe as reloads cannot be
@@ -3648,6 +3647,14 @@ func (a *Agent) reloadConfigInternal(newCfg *config.RuntimeConfig) error {
 	}
 
 	return nil
+}
+
+func runtimeToUserEventHandlerConfig(rt *config.RuntimeConfig) UserEventHandlerConfig {
+	return UserEventHandlerConfig{
+		NodeName:          rt.NodeName,
+		Datacenter:        rt.Datacenter,
+		DisableRemoteExec: rt.DisableRemoteExec,
+	}
 }
 
 // LocalBlockingQuery performs a blocking query in a generic way against

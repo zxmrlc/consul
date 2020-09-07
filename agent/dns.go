@@ -123,7 +123,7 @@ func NewDNSServer(a *Agent) (*DNSServer, error) {
 	return srv, nil
 }
 
-// newDNSConfig creates a newConfig from a RuntimeConfig.
+// newDNSConfig creates a dnsConfig from a RuntimeConfig.
 func newDNSConfig(conf *config.RuntimeConfig) (*dnsConfig, error) {
 	cfg := &dnsConfig{
 		AllowStale:         conf.DNSAllowStale,

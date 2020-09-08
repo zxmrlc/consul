@@ -61,8 +61,25 @@ type ManagerSerfCluster interface {
 // Pinger is an interface wrapping client.ConnPool to prevent a cyclic import
 // dependency.
 type Pinger interface {
-	Ping(dc, nodeName string, addr net.Addr) (bool, error)
+	Ping(dc, nodeName string, addr net.Addr, version int, useTLS bool) (bool, error)
 }
+
+// ServerTracker is a wrapper around consul.ServerResolverBuilder to prevent a
+// cyclic import dependency.
+type ServerTracker interface {
+	AddServer(*metadata.Server)
+	RemoveServer(*metadata.Server)
+}
+
+// NoOpServerTracker is a ServerTracker that does nothing. Used when gRPC is not
+// enabled.
+type NoOpServerTracker struct{}
+
+// AddServer implements ServerTracker
+func (t *NoOpServerTracker) AddServer(*metadata.Server) {}
+
+// RemoveServer implements ServerTracker
+func (t *NoOpServerTracker) RemoveServer(*metadata.Server) {}
 
 // serverList is a local copy of the struct used to maintain the list of
 // Consul servers used by Manager.
@@ -98,9 +115,9 @@ type Manager struct {
 	// client.ConnPool.
 	connPoolPinger Pinger
 
-	// serverName has the name of the managers's server. This is used to
-	// short-circuit pinging to itself.
-	serverName string
+	// grpcServerTracker is used to balance grpc connections across servers,
+	// and has callbacks for adding or removing a server.
+	grpcServerTracker ServerTracker
 
 	// notifyFailedBarrier is acts as a barrier to prevent queuing behind
 	// serverListLog and acts as a TryLock().
@@ -119,6 +136,7 @@ type Manager struct {
 func (m *Manager) AddServer(s *metadata.Server) {
 	m.listLock.Lock()
 	defer m.listLock.Unlock()
+	m.grpcServerTracker.AddServer(s)
 	l := m.getServerList()
 
 	// Check if this server is known
@@ -235,10 +253,6 @@ func (m *Manager) FindServer() *metadata.Server {
 }
 
 func (m *Manager) checkServers(fn func(srv *metadata.Server) bool) bool {
-	if m == nil {
-		return true
-	}
-
 	for _, srv := range m.getServerList().servers {
 		if !fn(srv) {
 			return false
@@ -251,12 +265,14 @@ func (m *Manager) CheckServers(fn func(srv *metadata.Server) bool) {
 	_ = m.checkServers(fn)
 }
 
+// Servers returns the current list of servers.
+func (m *Manager) Servers() []*metadata.Server {
+	return m.getServerList().servers
+}
+
 // getServerList is a convenience method which hides the locking semantics
 // of atomic.Value from the caller.
 func (m *Manager) getServerList() serverList {
-	if m == nil {
-		return serverList{}
-	}
 	return m.listValue.Load().(serverList)
 }
 
@@ -267,7 +283,7 @@ func (m *Manager) saveServerList(l serverList) {
 }
 
 // New is the only way to safely create a new Manager struct.
-func New(logger hclog.Logger, shutdownCh chan struct{}, clusterInfo ManagerSerfCluster, connPoolPinger Pinger, serverName string) (m *Manager) {
+func New(logger hclog.Logger, shutdownCh chan struct{}, clusterInfo ManagerSerfCluster, connPoolPinger Pinger, tracker ServerTracker) (m *Manager) {
 	if logger == nil {
 		logger = hclog.New(&hclog.LoggerOptions{})
 	}
@@ -276,9 +292,9 @@ func New(logger hclog.Logger, shutdownCh chan struct{}, clusterInfo ManagerSerfC
 	m.logger = logger.Named(logging.Manager)
 	m.clusterInfo = clusterInfo       // can't pass *consul.Client: import cycle
 	m.connPoolPinger = connPoolPinger // can't pass *consul.ConnPool: import cycle
+	m.grpcServerTracker = tracker     // can't pass *consul.ServerResolverBuilder: import cycle
 	m.rebalanceTimer = time.NewTimer(clientRPCMinReuseDuration)
 	m.shutdownCh = shutdownCh
-	m.serverName = serverName
 	atomic.StoreInt32(&m.offline, 1)
 
 	l := serverList{}
@@ -324,25 +340,6 @@ func (m *Manager) NumServers() int {
 	return len(l.servers)
 }
 
-func (m *Manager) healthyServer(server *metadata.Server) bool {
-	// Check to see if the manager is trying to ping itself. This
-	// is a small optimization to avoid performing an unnecessary
-	// RPC call.
-	// If this is true, we know there are healthy servers for this
-	// manager and we don't need to continue.
-	if m.serverName != "" && server.Name == m.serverName {
-		return true
-	}
-	if ok, err := m.connPoolPinger.Ping(server.Datacenter, server.ShortName, server.Addr); !ok {
-		m.logger.Debug("pinging server failed",
-			"server", server.String(),
-			"error", err,
-		)
-		return false
-	}
-	return true
-}
-
 // RebalanceServers shuffles the list of servers on this metadata.  The server
 // at the front of the list is selected for the next RPC.  RPC calls that
 // fail for a particular server are rotated to the end of the list.  This
@@ -367,12 +364,19 @@ func (m *Manager) RebalanceServers() {
 	// this loop mutates the server list in-place.
 	var foundHealthyServer bool
 	for i := 0; i < len(l.servers); i++ {
-		// Always test the first server. Failed servers are cycled
+		// Always test the first server.  Failed servers are cycled
 		// while Serf detects the node has failed.
-		if m.healthyServer(l.servers[0]) {
+		srv := l.servers[0]
+
+		ok, err := m.connPoolPinger.Ping(srv.Datacenter, srv.ShortName, srv.Addr, srv.Version, srv.UseTLS)
+		if ok {
 			foundHealthyServer = true
 			break
 		}
+		m.logger.Debug("pinging server failed",
+			"server", srv.String(),
+			"error", err,
+		)
 		l.servers = l.cycleServer()
 	}
 
@@ -392,17 +396,16 @@ func (m *Manager) RebalanceServers() {
 			"number_of_servers", len(l.servers),
 			"active_server", l.servers[0].String(),
 		)
+	} else {
+		// reconcileServerList failed because Serf removed the server
+		// that was at the front of the list that had successfully
+		// been Ping'ed.  Between the Ping and reconcile, a Serf
+		// event had shown up removing the node.
+		//
+		// Instead of doing any heroics, "freeze in place" and
+		// continue to use the existing connection until the next
+		// rebalance occurs.
 	}
-	// else {
-	// reconcileServerList failed because Serf removed the server
-	// that was at the front of the list that had successfully
-	// been Ping'ed.  Between the Ping and reconcile, a Serf
-	// event had shown up removing the node.
-	//
-	// Instead of doing any heroics, "freeze in place" and
-	// continue to use the existing connection until the next
-	// rebalance occurs.
-	// }
 }
 
 // reconcileServerList returns true when the first server in serverList
@@ -478,6 +481,7 @@ func (m *Manager) reconcileServerList(l *serverList) bool {
 func (m *Manager) RemoveServer(s *metadata.Server) {
 	m.listLock.Lock()
 	defer m.listLock.Unlock()
+	m.grpcServerTracker.RemoveServer(s)
 	l := m.getServerList()
 
 	// Remove the server if known
@@ -498,17 +502,22 @@ func (m *Manager) RemoveServer(s *metadata.Server) {
 func (m *Manager) refreshServerRebalanceTimer() time.Duration {
 	l := m.getServerList()
 	numServers := len(l.servers)
+	connRebalanceTimeout := ComputeRebalanceTimer(numServers, m.clusterInfo.NumNodes())
+
+	m.rebalanceTimer.Reset(connRebalanceTimeout)
+	return connRebalanceTimeout
+}
+
+// ComputeRebalanceTimer returns a time to wait before rebalancing connections given
+// a number of servers and LAN nodes.
+func ComputeRebalanceTimer(numServers, numLANMembers int) time.Duration {
 	// Limit this connection's life based on the size (and health) of the
 	// cluster.  Never rebalance a connection more frequently than
 	// connReuseLowWatermarkDuration, and make sure we never exceed
 	// clusterWideRebalanceConnsPerSec operations/s across numLANMembers.
 	clusterWideRebalanceConnsPerSec := float64(numServers * newRebalanceConnsPerSecPerServer)
 	connReuseLowWatermarkDuration := clientRPCMinReuseDuration + lib.RandomStagger(clientRPCMinReuseDuration/clientRPCJitterFraction)
-	numLANMembers := m.clusterInfo.NumNodes()
-	connRebalanceTimeout := lib.RateScaledInterval(clusterWideRebalanceConnsPerSec, connReuseLowWatermarkDuration, numLANMembers)
-
-	m.rebalanceTimer.Reset(connRebalanceTimeout)
-	return connRebalanceTimeout
+	return lib.RateScaledInterval(clusterWideRebalanceConnsPerSec, connReuseLowWatermarkDuration, numLANMembers)
 }
 
 // ResetRebalanceTimer resets the rebalance timer.  This method exists for

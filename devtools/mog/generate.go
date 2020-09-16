@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/format"
 	"go/token"
+	"go/types"
 	"os"
 	"path"
 	"path/filepath"
@@ -29,7 +30,7 @@ func generateFiles(cfg config, targets map[string]targetPkg) error {
 			if err != nil {
 				return fmt.Errorf("failed to generate conversion for %v: %w", cfg.Source, err)
 			}
-			decls = append(decls, gen.To, gen.From)
+			decls = append(decls, gen.Functions...)
 
 			// TODO: generate round trip testcase
 		}
@@ -104,6 +105,15 @@ func generateConversion(cfg structConfig, t targetStruct, imports *imports) (gen
 
 		// TODO: handle pointer
 
+		if mapType, ok := sourceField.SourceType.(*ast.MapType); ok {
+			ast.Print(new(token.FileSet), mapType)
+			decls := generateMapFunc(cfg, mapType, field, imports)
+			g.Functions = append(g.Functions, decls...)
+			// TODO: generate To func
+			// TODO: generate From func
+			// TODO: set FuncTo/FuncFrom
+		}
+
 		srcExpr := &ast.SelectorExpr{
 			X:   &ast.Ident{Name: varNameSource},
 			Sel: &ast.Ident{Name: sourceField.SourceName},
@@ -126,10 +136,62 @@ func generateConversion(cfg structConfig, t targetStruct, imports *imports) (gen
 	returnStmt = &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: varNameSource}}}
 	from.Body.List = append(from.Body.List, returnStmt)
 
-	g.To = to
-	g.From = from
-
+	g.Functions = append(g.Functions, to, from)
 	return g, nil
+}
+
+func generateMapFunc(cfg structConfig, mapType *ast.MapType, target *types.Var, imports *imports) []ast.Decl {
+	keyName, ok := nameFromIdentOrStarExpr(mapType.Key)
+	if !ok {
+		// TODO: warn and handle this better
+		return nil
+	}
+
+	valueName, ok := nameFromIdentOrStarExpr(mapType.Value)
+	if !ok {
+		// TODO: warn and handle this better
+		return nil
+	}
+
+	targetType := &ast.SelectorExpr{
+		X:   &ast.Ident{Name: path.Base(imports.AliasFor(target.Pkg().Path()))},
+		Sel: &ast.Ident{Name: target.Name()},
+	}
+
+	to := &ast.FuncDecl{
+		Name: &ast.Ident{Name: "Map" + keyName + valueName + "To" + cfg.FuncNameFragment},
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{{
+					Names: []*ast.Ident{{Name: varNameSource}},
+					Type:  mapType,
+				}},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{{Type: targetType}},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				// TODO: use make and set the size
+				&ast.DeclStmt{Decl: &ast.GenDecl{
+					Tok: token.VAR,
+					Specs: []ast.Spec{
+						&ast.ValueSpec{
+							Names: []*ast.Ident{{Name: varNameTarget}},
+							Type:  targetType,
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	returnStmt := &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: varNameTarget}}}
+	to.Body.List = append(to.Body.List, returnStmt)
+
+	// TODO: from
+	return append([]ast.Decl{}, to)
 }
 
 // TODO: test case with funcFrom/FuncTo
@@ -161,8 +223,7 @@ func sourceFieldMap(fields []fieldConfig) map[string]fieldConfig {
 }
 
 type generated struct {
-	To   *ast.FuncDecl
-	From *ast.FuncDecl
+	Functions []ast.Decl
 
 	// TODO: RoundTripTest *ast.FuncDecl
 }

@@ -82,7 +82,7 @@ func TestGenerateConversion(t *testing.T) {
 
 	file := &ast.File{Name: &ast.Ident{Name: "src"}}
 	file.Decls = append(file.Decls, imports.Decl())
-	file.Decls = append(file.Decls, gen.To, gen.From)
+	file.Decls = append(file.Decls, gen.Functions...)
 
 	buf := new(bytes.Buffer)
 	err = format.Node(buf, new(token.FileSet), file)

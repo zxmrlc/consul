@@ -254,12 +254,12 @@ func applyAutoConvertFunctions(cfgs []structConfig) []structConfig {
 				continue
 			}
 
-			ident, ok := f.SourceType.(*ast.Ident)
+			name, ok := nameFromIdentOrStarExpr(f.SourceType)
 			if !ok {
 				continue
 			}
 
-			structCfg, ok := byName[ident.Name]
+			structCfg, ok := byName[name]
 			if !ok {
 				// TODO: log warning that auto convert did not work
 				continue
@@ -272,4 +272,14 @@ func applyAutoConvertFunctions(cfgs []structConfig) []structConfig {
 		cfgs[structIdx] = s
 	}
 	return cfgs
+}
+
+func nameFromIdentOrStarExpr(e ast.Expr) (string, bool) {
+	switch v := e.(type) {
+	case *ast.Ident:
+		return v.Name, true
+	case *ast.StarExpr:
+		return nameFromIdentOrStarExpr(v.X)
+	}
+	return "", false
 }

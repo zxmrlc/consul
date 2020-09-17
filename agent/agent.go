@@ -303,6 +303,8 @@ type Agent struct {
 
 	// enterpriseAgent embeds fields that we only access in consul-enterprise builds
 	enterpriseAgent
+
+	httpHandlers *HTTPServer
 }
 
 // New process the desired options and creates a new Agent.
@@ -369,6 +371,12 @@ func New(bd BaseDeps) (*Agent, error) {
 
 	// TODO: pass in a fully populated apiServers into Agent.New
 	a.apiServers = NewAPIServers(a.logger)
+
+	a.httpHandlers = &HTTPServer{
+		agent:     &a,
+		denylist:  NewDenylist(a.config.HTTPBlockEndpoints),
+		endpoints: getEndpoints(&a),
+	}
 
 	return &a, nil
 }
@@ -754,15 +762,10 @@ func (a *Agent) listenHTTP() ([]apiServer, error) {
 				l = tls.NewListener(l, tlscfg)
 			}
 
-			srv := &HTTPServer{
-				agent:     a,
-				denylist:  NewDenylist(a.config.HTTPBlockEndpoints),
-				endpoints: getEndpoints(a),
-			}
 			httpServer := &http.Server{
 				Addr:      l.Addr().String(),
 				TLSConfig: tlscfg,
-				Handler:   srv.handler(a.config.EnableDebug),
+				Handler:   a.httpHandlers.handler(a.config.EnableDebug),
 			}
 
 			// Load the connlimit helper into the server

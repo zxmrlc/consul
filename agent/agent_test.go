@@ -846,6 +846,201 @@ func TestCacheRateLimit(test *testing.T) {
 	}
 }
 
+func TestAddServiceIPTags(t *testing.T) {
+	type expect struct {
+		expectLANIPv4 structs.ServiceAddress
+		expectLANIPv6 structs.ServiceAddress
+		expectWANIPv4 structs.ServiceAddress
+		expectWANIPv6 structs.ServiceAddress
+	}
+	tt := []struct {
+		name         string
+		registration structs.NodeService
+		expect       expect
+		ipv6         bool
+	}{
+		{
+			name: "wan and lan ipv4 get ipv4 svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "10.0.1.2",
+			},
+			expect: expect{
+				expectLANIPv4: structs.ServiceAddress{Address: "10.0.1.2", Port: 8100},
+				expectWANIPv4: structs.ServiceAddress{Address: "10.0.1.2", Port: 8100},
+			},
+		},
+		{
+			name: "wan and lan ipv6 get ipv6 svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "::5",
+			},
+			expect: expect{
+				expectLANIPv6: structs.ServiceAddress{Address: "::5", Port: 8100},
+				expectWANIPv6: structs.ServiceAddress{Address: "::5", Port: 8100},
+			},
+			ipv6: true,
+		},
+		{
+			name: "tagged lanipv4 not overwritten by svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "10.0.1.2",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressLANIPv4: {
+						Address: "10.100.200.5",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectWANIPv4: structs.ServiceAddress{Address: "10.0.1.2", Port: 8100},
+				expectLANIPv4: structs.ServiceAddress{Address: "10.100.200.5", Port: 8101},
+			},
+		},
+		{
+			name: "tagged lanipv6 not overwritten by svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "::5",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressLANIPv6: {
+						Address: "::6",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectWANIPv6: structs.ServiceAddress{Address: "::5", Port: 8100},
+				expectLANIPv6: structs.ServiceAddress{Address: "::6", Port: 8101},
+			},
+			ipv6: true,
+		},
+		{
+			name: "tagged wanipv4 not overwritten by svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "10.0.1.2",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressWANIPv4: {
+						Address: "10.100.200.5",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectLANIPv4: structs.ServiceAddress{Address: "10.0.1.2", Port: 8100},
+				expectWANIPv4: structs.ServiceAddress{Address: "10.100.200.5", Port: 8101},
+			},
+		},
+		{
+			name: "tagged wanipv6 not overwritten by svc addr",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "::5",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressWANIPv6: {
+						Address: "::6",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectLANIPv6: structs.ServiceAddress{Address: "::5", Port: 8100},
+				expectWANIPv6: structs.ServiceAddress{Address: "::6", Port: 8101},
+			},
+			ipv6: true,
+		},
+		{
+			name: "tagged wanipv4 inherited from tagged wan",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "10.0.1.2",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressWAN: {
+						Address: "10.100.200.5",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectLANIPv4: structs.ServiceAddress{Address: "10.0.1.2", Port: 8100},
+				expectWANIPv4: structs.ServiceAddress{Address: "10.100.200.5", Port: 8101},
+			},
+		},
+		{
+			name: "tagged wanipv6 inherited from tagged wan",
+			registration: structs.NodeService{
+				Service: "my_service",
+				ID:      "my_service_id",
+				Port:    8100,
+				Address: "::5",
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressWAN: {
+						Address: "::6",
+						Port:    8101,
+					},
+				},
+			},
+			expect: expect{
+				expectLANIPv6: structs.ServiceAddress{Address: "::5", Port: 8100},
+				expectWANIPv6: structs.ServiceAddress{Address: "::6", Port: 8101},
+			},
+			ipv6: true,
+		},
+	}
+
+	a := NewTestAgent(t, "")
+	defer a.Shutdown()
+	testrpc.WaitForTestAgent(t, a.RPC, "dc1")
+
+	for _, tc := range tt {
+		err := a.AddService(&tc.registration, nil, false, "", ConfigSourceRemote)
+		require.Nil(t, err)
+
+		ns := a.State.Service(structs.NewServiceID(tc.registration.ID, nil))
+		require.NotNil(t, ns)
+
+		require.Equal(t, tc.expect.expectLANIPv4, ns.TaggedAddresses[structs.TaggedAddressLANIPv4])
+		require.Equal(t, tc.expect.expectLANIPv6, ns.TaggedAddresses[structs.TaggedAddressLANIPv6])
+
+		require.Equal(t, tc.expect.expectWANIPv4, ns.TaggedAddresses[structs.TaggedAddressWANIPv4])
+		require.Equal(t, tc.expect.expectWANIPv6, ns.TaggedAddresses[structs.TaggedAddressWANIPv6])
+
+		if tc.expect.expectLANIPv6.Address != "" || tc.expect.expectWANIPv6.Address != "" {
+			_, ok := ns.TaggedAddresses[structs.TaggedAddressLANIPv4]
+			require.False(t, ok)
+
+			_, ok = ns.TaggedAddresses[structs.TaggedAddressWANIPv4]
+			require.False(t, ok)
+
+		}
+		if tc.expect.expectLANIPv4.Address != "" || tc.expect.expectWANIPv4.Address != "" {
+			_, ok := ns.TaggedAddresses[structs.TaggedAddressLANIPv6]
+			require.False(t, ok)
+
+			_, ok = ns.TaggedAddresses[structs.TaggedAddressWANIPv6]
+			require.False(t, ok)
+
+		}
+	}
+}
+
 func TestAddServiceIPv4TaggedDefault(t *testing.T) {
 	t.Helper()
 

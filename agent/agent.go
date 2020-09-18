@@ -1971,14 +1971,39 @@ func (a *Agent) addServiceInternal(req *addServiceRequest, snap map[structs.Chec
 	if _, ok := service.TaggedAddresses[structs.TaggedAddressLANIPv4]; !ok && serviceAddressIs4 {
 		service.TaggedAddresses[structs.TaggedAddressLANIPv4] = structs.ServiceAddress{Address: service.Address, Port: service.Port}
 	}
-	if _, ok := service.TaggedAddresses[structs.TaggedAddressWANIPv4]; !ok && serviceAddressIs4 {
-		service.TaggedAddresses[structs.TaggedAddressWANIPv4] = structs.ServiceAddress{Address: service.Address, Port: service.Port}
-	}
 	if _, ok := service.TaggedAddresses[structs.TaggedAddressLANIPv6]; !ok && serviceAddressIs6 {
 		service.TaggedAddresses[structs.TaggedAddressLANIPv6] = structs.ServiceAddress{Address: service.Address, Port: service.Port}
 	}
-	if _, ok := service.TaggedAddresses[structs.TaggedAddressWANIPv6]; !ok && serviceAddressIs6 {
-		service.TaggedAddresses[structs.TaggedAddressWANIPv6] = structs.ServiceAddress{Address: service.Address, Port: service.Port}
+
+	// Ensure we use the tagged WAN addr as the tagged IPv4/6 address if it exists
+	var (
+		wanAddr       structs.ServiceAddress
+		wanAddressIs4 bool
+		wanAddressIs6 bool
+	)
+	existing, _ := service.TaggedAddresses[structs.TaggedAddressWAN]
+
+	switch {
+	case existing.Address != "":
+		wanIP := net.ParseIP(existing.Address)
+
+		wanAddressIs4 = wanIP.To4() != nil
+		wanAddressIs6 = wanIP.To4() == nil
+
+		wanAddr = structs.ServiceAddress{Address: existing.Address, Port: existing.Port}
+
+	default:
+		wanAddressIs4 = serviceAddressIs4
+		wanAddressIs6 = serviceAddressIs6
+
+		wanAddr = structs.ServiceAddress{Address: service.Address, Port: service.Port}
+	}
+
+	if _, ok := service.TaggedAddresses[structs.TaggedAddressWANIPv4]; !ok && wanAddressIs4 {
+		service.TaggedAddresses[structs.TaggedAddressWANIPv4] = wanAddr
+	}
+	if _, ok := service.TaggedAddresses[structs.TaggedAddressWANIPv6]; !ok && wanAddressIs6 {
+		service.TaggedAddresses[structs.TaggedAddressWANIPv6] = wanAddr
 	}
 
 	var checks []*structs.HealthCheck

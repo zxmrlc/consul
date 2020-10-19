@@ -3,14 +3,12 @@ package submatview
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/hashicorp/consul/agent/cache"
 	"github.com/hashicorp/consul/lib/retry"
 	"github.com/hashicorp/consul/proto/pbsubscribe"
 )
@@ -208,8 +206,8 @@ func (m *Materializer) notifyUpdateLocked(err error) {
 // Fetch implements the logic a StreamingCacheType will need during it's Fetch
 // call. Cache types that use streaming should just be able to proxy to this
 // once they have a subscription object and return it's results directly.
-func (m *Materializer) Fetch(done <-chan struct{}, opts cache.FetchOptions) (cache.FetchResult, error) {
-	var result cache.FetchResult
+func (m *Materializer) Fetch(ctx context.Context, opts FetchOptions) (FetchResult, error) {
+	var result FetchResult
 
 	// Get current view Result and index
 	m.lock.Lock()
@@ -233,11 +231,6 @@ func (m *Materializer) Fetch(done <-chan struct{}, opts cache.FetchOptions) (cac
 		return result, nil
 	}
 
-	// Watch for timeout of the Fetch. Note it's opts.Timeout not req.Timeout
-	// since that is the timeout the client requested from the cache Get while the
-	// options one is the internal "background refresh" timeout which is what the
-	// Fetch call should be using.
-	timeoutCh := time.After(opts.Timeout)
 	for {
 		select {
 		case <-updateCh:
@@ -274,12 +267,8 @@ func (m *Materializer) Fetch(done <-chan struct{}, opts cache.FetchOptions) (cac
 			// Return the updated result
 			return result, nil
 
-		case <-timeoutCh:
-			// Just return whatever we got originally, might still be empty
-			return result, nil
-
-		case <-done:
-			return result, context.Canceled
+		case <-ctx.Done():
+			return result, ctx.Err()
 		}
 	}
 }

@@ -1,0 +1,37 @@
+<form class="filter-bar">
+  <FreetextFilter
+    @onsearch={{action @onsearch}}
+    @value={{@search}}
+    @placeholder="Search"
+  />
+  <div class="sort">
+    <PopoverSelect
+      class="type-sort"
+      data-test-sort-control
+      @position="right"
+      @onchange={{action @onsort}}
+      @multiple={{false}}
+    as |components|>
+      <BlockSlot @name="selected">
+        <span>
+          {{#let (from-entries (array
+                (array "DestinationName:asc" "A to Z")
+                (array "DestinationName:desc" "Z to A")
+              ))
+            as |selectable|
+          }}
+            {{get selectable @sort}}
+          {{/let}}
+        </span>
+      </BlockSlot>
+      <BlockSlot @name="options">
+  {{#let components.Optgroup components.Option as |Optgroup Option|}}
+        <Optgroup @label="Upstream Name">
+          <Option @value="DestinationName:asc" @selected={{eq "DestinationName:asc" @sort}}>A to Z</Option>
+          <Option @value="DestinationName:desc" @selected={{eq "DestinationName:desc" @sort}}>Z to A</Option>
+        </Optgroup>
+  {{/let}}
+      </BlockSlot>
+    </PopoverSelect>
+  </div>
+</form>

@@ -9,6 +9,7 @@ import role from 'consul-ui/sort/comparators/role';
 import policy from 'consul-ui/sort/comparators/policy';
 import nspace from 'consul-ui/sort/comparators/nspace';
 import node from 'consul-ui/sort/comparators/node';
+import upstreamInstance from 'consul-ui/sort/comparators/upstream-instance';
 
 const comparators = {
   service: service(),
@@ -21,6 +22,7 @@ const comparators = {
   policy: policy(),
   nspace: nspace(),
   node: node(),
+  upstreamInstance: upstreamInstance(),
 };
 export default class SortService extends Service {
   comparator(type) {

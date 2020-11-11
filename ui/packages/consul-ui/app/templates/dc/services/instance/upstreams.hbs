@@ -1,7 +1,33 @@
 <div class="tab-section">
   <div role="tabpanel">
-  {{#if (gt proxy.Service.Proxy.Upstreams.length 0)}}
-    <Consul::UpstreamInstance::List @items={{proxy.Service.Proxy.Upstreams}} @dc={{dc}} @nspace={{nspace}} />
-  {{/if}}
+{{#let (or sortBy "DestinationName:asc") as |sort|}}
+{{#if (gt proxy.Service.Proxy.Upstreams.length 0)}}
+  <Consul::UpstreamInstance::SearchBar
+    @search={{search}}
+    @onsearch={{action (mut search) value="target.value"}}
+
+    @sort={{sort}}
+    @onsort={{action (mut sortBy) value="target.selected"}}
+  />
+      <BlockSlot @name="content">
+        <Consul::UpstreamInstance::List
+          @items={{proxy.Service.Proxy.Upstreams}}
+          @dc={{dc}}
+          @nspace={{nspace}}
+          @sort={{sort}}
+          @search={{search}}
+        />
+      </BlockSlot>
+      <BlockSlot @name="empty">
+        <EmptyState>
+          <BlockSlot @name="body">
+            <p>
+              There are no upstreams.
+            </p>
+          </BlockSlot>
+        </EmptyState>
+      </BlockSlot>
+{{/if}}
+{{/let}}
   </div>
 </div>

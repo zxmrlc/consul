@@ -18,7 +18,6 @@ import (
 	"time"
 
 	metrics "github.com/armon/go-metrics"
-	"github.com/hashicorp/consul/sdk/testutil"
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-hclog"
 	uuid "github.com/hashicorp/go-uuid"
@@ -31,6 +30,7 @@ import (
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/api"
 	"github.com/hashicorp/consul/sdk/freeport"
+	"github.com/hashicorp/consul/sdk/testutil"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
 	"github.com/hashicorp/consul/tlsutil"
 )
@@ -56,8 +56,7 @@ type TestAgent struct {
 	// when Shutdown() is called.
 	Config *config.RuntimeConfig
 
-	// LogOutput is the sink for the logs. If nil, logs are written
-	// to os.Stderr.
+	// LogOutput is the sink for the logs. If nil, logs are written to os.Stderr.
 	LogOutput io.Writer
 
 	// DataDir may be set to a directory which exists. If is it not set,

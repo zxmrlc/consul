@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/consul/agent/structs"
 	"github.com/stretchr/testify/require"
+
+	"github.com/hashicorp/consul/agent/structs"
 )
 
 func TestAgent_sidecarServiceFromNodeService(t *testing.T) {
@@ -329,7 +330,7 @@ func TestAgent_sidecarServiceFromNodeService(t *testing.T) {
 			defer a.Shutdown()
 
 			if tt.preRegister != nil {
-				err := a.AddService(tt.preRegister.NodeService(), nil, false, "", ConfigSourceLocal)
+				err := a.AddServiceFromSource(tt.preRegister.NodeService(), nil, false, "", ConfigSourceLocal)
 				require.NoError(err)
 			}
 

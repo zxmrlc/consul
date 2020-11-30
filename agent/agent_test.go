@@ -412,7 +412,7 @@ func testAgent_AddService(t *testing.T, extraHCL string) {
 		t.Run(tt.desc, func(t *testing.T) {
 			// check the service registration
 			t.Run(tt.srv.ID, func(t *testing.T) {
-				err := a.AddService(tt.srv, tt.chkTypes, false, "", ConfigSourceLocal)
+				err := a.AddServiceFromSource(tt.srv, tt.chkTypes, false, "", ConfigSourceLocal)
 				if err != nil {
 					t.Fatalf("err: %v", err)
 				}
@@ -517,7 +517,7 @@ func testAgent_AddServices_AliasUpdateCheckNotReverted(t *testing.T, extraHCL st
 		chkTypes, err := service.CheckTypes()
 		require.NoError(t, err)
 
-		require.NoError(t, a.AddService(ns, chkTypes, false, service.Token, ConfigSourceLocal))
+		require.NoError(t, a.AddServiceFromSource(ns, chkTypes, false, service.Token, ConfigSourceLocal))
 	}
 
 	retry.Run(t, func(r *retry.R) {
@@ -544,7 +544,7 @@ func test_createAlias(t *testing.T, agent *TestAgent, chk *structs.CheckType, ex
 	if chk.CheckID == "" {
 		chk.CheckID = types.CheckID(fmt.Sprintf("check-%d", serviceNum))
 	}
-	err := agent.AddService(srv, []*structs.CheckType{chk}, false, "", ConfigSourceLocal)
+	err := agent.AddServiceFromSource(srv, []*structs.CheckType{chk}, false, "", ConfigSourceLocal)
 	assert.NoError(t, err)
 	return func(r *retry.R) {
 		t.Helper()
@@ -587,7 +587,7 @@ func TestAgent_CheckAliasRPC(t *testing.T) {
 		// We ensure to not block and update Agent's index
 		srv.Tags = []string{fmt.Sprintf("tag-%s", time.Now())}
 		assert.NoError(t, a.waitForUp())
-		err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceLocal)
+		err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceLocal)
 		assert.NoError(t, err)
 	}
 	shutdownAgent := func() {
@@ -602,7 +602,7 @@ func TestAgent_CheckAliasRPC(t *testing.T) {
 	testrpc.WaitForTestAgent(t, a.RPC, "dc1")
 
 	assert.NoError(t, a.waitForUp())
-	err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceLocal)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceLocal)
 	assert.NoError(t, err)
 
 	retry.Run(t, func(r *retry.R) {
@@ -704,12 +704,12 @@ func testAgent_AddServiceNoExec(t *testing.T, extraHCL string) {
 		Interval:   15 * time.Second,
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{chk}, false, "", ConfigSourceLocal)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{chk}, false, "", ConfigSourceLocal)
 	if err == nil || !strings.Contains(err.Error(), "Scripts are disabled on this agent") {
 		t.Fatalf("err: %v", err)
 	}
 
-	err = a.AddService(srv, []*structs.CheckType{chk}, false, "", ConfigSourceRemote)
+	err = a.AddServiceFromSource(srv, []*structs.CheckType{chk}, false, "", ConfigSourceRemote)
 	if err == nil || !strings.Contains(err.Error(), "Scripts are disabled on this agent") {
 		t.Fatalf("err: %v", err)
 	}
@@ -747,7 +747,7 @@ func testAgent_AddServiceNoRemoteExec(t *testing.T, extraHCL string) {
 		Interval:   15 * time.Second,
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{chk}, false, "", ConfigSourceRemote)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{chk}, false, "", ConfigSourceRemote)
 	if err == nil || !strings.Contains(err.Error(), "Scripts are disabled on this agent") {
 		t.Fatalf("err: %v", err)
 	}
@@ -796,7 +796,7 @@ func TestCacheRateLimit(test *testing.T) {
 					Address: fmt.Sprintf("10.0.1.%d", i%255),
 				}
 
-				err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
+				err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
 				require.Nil(t, err)
 			}
 
@@ -867,7 +867,7 @@ func TestAddServiceIPv4TaggedDefault(t *testing.T) {
 		Address: "10.0.1.2",
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
 	require.Nil(t, err)
 
 	ns := a.State.Service(structs.NewServiceID("my_service_id", nil))
@@ -896,7 +896,7 @@ func TestAddServiceIPv6TaggedDefault(t *testing.T) {
 		Address: "::5",
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
 	require.Nil(t, err)
 
 	ns := a.State.Service(structs.NewServiceID("my_service_id", nil))
@@ -931,7 +931,7 @@ func TestAddServiceIPv4TaggedSet(t *testing.T) {
 		},
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
 	require.Nil(t, err)
 
 	ns := a.State.Service(structs.NewServiceID("my_service_id", nil))
@@ -966,7 +966,7 @@ func TestAddServiceIPv6TaggedSet(t *testing.T) {
 		},
 	}
 
-	err := a.AddService(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
+	err := a.AddServiceFromSource(srv, []*structs.CheckType{}, false, "", ConfigSourceRemote)
 	require.Nil(t, err)
 
 	ns := a.State.Service(structs.NewServiceID("my_service_id", nil))
@@ -1017,7 +1017,7 @@ func testAgent_RemoveService(t *testing.T, extraHCL string) {
 		}
 		chkTypes := []*structs.CheckType{{TTL: time.Minute}}
 
-		if err := a.AddService(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
+		if err := a.AddServiceFromSource(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
 			t.Fatalf("err: %v", err)
 		}
 
@@ -1052,7 +1052,7 @@ func testAgent_RemoveService(t *testing.T, extraHCL string) {
 			{TTL: time.Minute},
 			{TTL: 30 * time.Second},
 		}
-		if err := a.AddService(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
+		if err := a.AddServiceFromSource(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
 			t.Fatalf("err: %v", err)
 		}
 
@@ -1066,7 +1066,7 @@ func testAgent_RemoveService(t *testing.T, extraHCL string) {
 			{TTL: time.Minute},
 			{TTL: 30 * time.Second},
 		}
-		if err := a.AddService(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
+		if err := a.AddServiceFromSource(srv, chkTypes, false, "", ConfigSourceLocal); err != nil {
 			t.Fatalf("err: %v", err)
 		}
 
@@ -1134,7 +1134,7 @@ func testAgent_RemoveServiceRemovesAllChecks(t *testing.T, extraHCL string) {
 	}
 
 	// register service with chk1
-	if err := a.AddService(svc, []*structs.CheckType{chk1}, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, []*structs.CheckType{chk1}, false, "", ConfigSourceLocal); err != nil {
 		t.Fatal("Failed to register service", err)
 	}
 
@@ -1142,7 +1142,7 @@ func testAgent_RemoveServiceRemovesAllChecks(t *testing.T, extraHCL string) {
 	requireCheckExists(t, a, "chk1")
 
 	// update the service with chk2
-	if err := a.AddService(svc, []*structs.CheckType{chk2}, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, []*structs.CheckType{chk2}, false, "", ConfigSourceLocal); err != nil {
 		t.Fatal("Failed to update service", err)
 	}
 
@@ -1195,7 +1195,7 @@ func verifyIndexChurn(t *testing.T, tags []string) {
 		Tags:    tags,
 		Weights: weights,
 	}
-	if err := a.AddService(svc, nil, true, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, true, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -1571,7 +1571,7 @@ func TestAgent_RestoreServiceWithAliasCheck(t *testing.T) {
 
 	registerServicesAndChecks := func(t *testing.T, a *TestAgent) {
 		// add one persistent service with a simple check
-		require.NoError(t, a.AddService(
+		require.NoError(t, a.AddServiceFromSource(
 			&structs.NodeService{
 				ID:      "ping",
 				Service: "ping",
@@ -1590,7 +1590,7 @@ func TestAgent_RestoreServiceWithAliasCheck(t *testing.T) {
 
 		// add one persistent sidecar service with an alias check in the manner
 		// of how sidecar_service would add it
-		require.NoError(t, a.AddService(
+		require.NoError(t, a.AddServiceFromSource(
 			&structs.NodeService{
 				ID:      "ping-sidecar-proxy",
 				Service: "ping-sidecar-proxy",
@@ -2044,7 +2044,7 @@ func testAgent_PersistService(t *testing.T, extraHCL string) {
 	file := filepath.Join(a.Config.DataDir, servicesDir, stringHash(svc.ID))
 
 	// Check is not persisted unless requested
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if _, err := os.Stat(file); err == nil {
@@ -2052,7 +2052,7 @@ func testAgent_PersistService(t *testing.T, extraHCL string) {
 	}
 
 	// Persists to file if requested
-	if err := a.AddService(svc, nil, true, "mytoken", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, true, "mytoken", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if _, err := os.Stat(file); err != nil {
@@ -2076,7 +2076,7 @@ func testAgent_PersistService(t *testing.T, extraHCL string) {
 
 	// Updates service definition on disk
 	svc.Port = 8001
-	if err := a.AddService(svc, nil, true, "mytoken", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, true, "mytoken", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	expected, err = json.Marshal(persistedService{
@@ -2191,7 +2191,7 @@ func testAgent_PurgeService(t *testing.T, extraHCL string) {
 	}
 
 	file := filepath.Join(a.Config.DataDir, servicesDir, stringHash(svc.ID))
-	if err := a.AddService(svc, nil, true, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, true, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	// Exists
@@ -2208,7 +2208,7 @@ func testAgent_PurgeService(t *testing.T, extraHCL string) {
 	}
 
 	// Re-add the service
-	if err := a.AddService(svc, nil, true, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, true, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -2250,7 +2250,7 @@ func testAgent_PurgeServiceOnDuplicate(t *testing.T, extraHCL string) {
 	}
 
 	// First persist the service
-	require.NoError(t, a.AddService(svc1, nil, true, "", ConfigSourceLocal))
+	require.NoError(t, a.AddServiceFromSource(svc1, nil, true, "", ConfigSourceLocal))
 	a.Shutdown()
 
 	// Try bringing the agent back up with the service already
@@ -2482,9 +2482,9 @@ func TestAgent_DeregisterPersistedSidecarAfterRestart(t *testing.T) {
 	require.NoError(t, err)
 
 	// First persist the check
-	err = a.AddService(srv, nil, true, "", ConfigSourceLocal)
+	err = a.AddServiceFromSource(srv, nil, true, "", ConfigSourceLocal)
 	require.NoError(t, err)
-	err = a.AddService(connectSrv, nil, true, "", ConfigSourceLocal)
+	err = a.AddServiceFromSource(connectSrv, nil, true, "", ConfigSourceLocal)
 	require.NoError(t, err)
 
 	// check both services were registered
@@ -2546,7 +2546,7 @@ func TestAgent_unloadChecks(t *testing.T) {
 		Tags:    []string{"foo"},
 		Port:    8000,
 	}
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -2801,7 +2801,7 @@ func testAgent_unloadServices(t *testing.T, extraHCL string) {
 	}
 
 	// Register the service
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -2829,7 +2829,7 @@ func TestAgent_Service_MaintenanceMode(t *testing.T) {
 	}
 
 	// Register the service
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -2906,7 +2906,7 @@ func TestAgent_Service_Reap(t *testing.T) {
 	}
 
 	// Register the service.
-	if err := a.AddService(svc, chkTypes, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, chkTypes, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -2959,7 +2959,7 @@ func TestAgent_Service_NoReap(t *testing.T) {
 	}
 
 	// Register the service.
-	if err := a.AddService(svc, chkTypes, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, chkTypes, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -3002,7 +3002,7 @@ func testAgent_AddService_restoresSnapshot(t *testing.T, extraHCL string) {
 		Tags:    []string{"foo"},
 		Port:    8000,
 	}
-	require.NoError(t, a.AddService(svc, nil, false, "", ConfigSourceLocal))
+	require.NoError(t, a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal))
 
 	// Register a check
 	check1 := &structs.HealthCheck{
@@ -3017,7 +3017,7 @@ func testAgent_AddService_restoresSnapshot(t *testing.T, extraHCL string) {
 
 	// Re-registering the service preserves the state of the check
 	chkTypes := []*structs.CheckType{{TTL: 30 * time.Second}}
-	require.NoError(t, a.AddService(svc, chkTypes, false, "", ConfigSourceLocal))
+	require.NoError(t, a.AddServiceFromSource(svc, chkTypes, false, "", ConfigSourceLocal))
 	check := requireCheckExists(t, a, "service:redis")
 	require.Equal(t, api.HealthPassing, check.Status)
 }
@@ -3034,7 +3034,7 @@ func TestAgent_AddCheck_restoresSnapshot(t *testing.T) {
 		Tags:    []string{"foo"},
 		Port:    8000,
 	}
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -3111,7 +3111,7 @@ func TestAgent_checkStateSnapshot(t *testing.T) {
 		Tags:    []string{"foo"},
 		Port:    8000,
 	}
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -3870,7 +3870,7 @@ func TestAgent_RerouteExistingHTTPChecks(t *testing.T) {
 			TLSSkipVerify: true,
 		},
 	}
-	if err := a.AddService(svc, chks, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, chks, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("failed to add svc: %v", err)
 	}
 
@@ -3893,7 +3893,7 @@ func TestAgent_RerouteExistingHTTPChecks(t *testing.T) {
 			},
 		},
 	}
-	if err := a.AddService(proxy, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(proxy, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("failed to add svc: %v", err)
 	}
 
@@ -3946,7 +3946,7 @@ func TestAgent_RerouteExistingHTTPChecks(t *testing.T) {
 			},
 		},
 	}
-	if err := a.AddService(proxy, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(proxy, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("failed to add svc: %v", err)
 	}
 
@@ -3985,7 +3985,7 @@ func TestAgent_RerouteNewHTTPChecks(t *testing.T) {
 		Address: "localhost",
 		Port:    8080,
 	}
-	if err := a.AddService(svc, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(svc, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("failed to add svc: %v", err)
 	}
 
@@ -4007,7 +4007,7 @@ func TestAgent_RerouteNewHTTPChecks(t *testing.T) {
 			},
 		},
 	}
-	if err := a.AddService(proxy, nil, false, "", ConfigSourceLocal); err != nil {
+	if err := a.AddServiceFromSource(proxy, nil, false, "", ConfigSourceLocal); err != nil {
 		t.Fatalf("failed to add svc: %v", err)
 	}
 

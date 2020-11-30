@@ -1871,7 +1871,7 @@ func (a *Agent) readPersistedServiceConfigs() (map[structs.ServiceID]*structs.Se
 // AddService is used to add a service entry and its check. Any check for this service missing from chkTypes will be deleted.
 // This entry is persistent and the agent will make a best effort to
 // ensure it is registered
-func (a *Agent) AddService(req addServiceRequest) error {
+func (a *Agent) AddService(req AddServiceRequest) error {
 	// service *structs.NodeService, chkTypes []*structs.CheckType, persist bool, token string, source configSource
 	req.waitForCentralConfig = true
 	req.persistServiceConfig = true
@@ -1882,36 +1882,14 @@ func (a *Agent) AddService(req addServiceRequest) error {
 	return a.addServiceLocked(&req)
 }
 
-// AddServiceFromSource is used to add a service entry.
-// This entry is persistent and the agent will make a best effort to
-// ensure it is registered.
-// TODO: move to _test.go
-// Deprecated: use AddService
-func (a *Agent) AddServiceFromSource(service *structs.NodeService, chkTypes []*structs.CheckType, persist bool, token string, source configSource) error {
-	a.stateLock.Lock()
-	defer a.stateLock.Unlock()
-	return a.addServiceLocked(&addServiceRequest{
-		service:               service,
-		chkTypes:              chkTypes,
-		previousDefaults:      nil,
-		waitForCentralConfig:  true,
-		persist:               persist,
-		persistServiceConfig:  true,
-		token:                 token,
-		replaceExistingChecks: false,
-		source:                source,
-		snap:                  a.snapshotCheckState(),
-	})
-}
-
 // addServiceLocked adds a service entry to the service manager if enabled, or directly
 // to the local state if it is not. This function assumes the state lock is already held.
-func (a *Agent) addServiceLocked(req *addServiceRequest) error {
+func (a *Agent) addServiceLocked(req *AddServiceRequest) error {
 	req.fixupForAddServiceLocked()
 
-	req.service.EnterpriseMeta.Normalize()
+	req.Service.EnterpriseMeta.Normalize()
 
-	if err := a.validateService(req.service, req.chkTypes); err != nil {
+	if err := a.validateService(req.Service, req.chkTypes); err != nil {
 		return err
 	}
 
@@ -1927,7 +1905,7 @@ func (a *Agent) addServiceLocked(req *addServiceRequest) error {
 	return a.addServiceInternal(req)
 }
 
-// addServiceRequest is the union of arguments for calling both
+// AddServiceRequest is the union of arguments for calling both
 // addServiceLocked and addServiceInternal. The overlap was significant enough
 // to warrant merging them and indicating which fields are meant to be set only
 // in one of the two contexts.
@@ -1937,8 +1915,8 @@ func (a *Agent) addServiceLocked(req *addServiceRequest) error {
 //
 // The ServiceManager.AddService signature is largely just a passthrough for
 // addServiceLocked and should be treated as such.
-type addServiceRequest struct {
-	service               *structs.NodeService
+type AddServiceRequest struct {
+	Service               *structs.NodeService
 	chkTypes              []*structs.CheckType
 	previousDefaults      *structs.ServiceConfigResponse // just for: addServiceLocked
 	waitForCentralConfig  bool                           // just for: addServiceLocked
@@ -1948,25 +1926,25 @@ type addServiceRequest struct {
 	persistServiceConfig  bool
 	token                 string
 	replaceExistingChecks bool
-	source                configSource
+	Source                configSource
 	snap                  map[structs.CheckID]*structs.HealthCheck
 }
 
-func (r *addServiceRequest) fixupForAddServiceLocked() {
+func (r *AddServiceRequest) fixupForAddServiceLocked() {
 	r.persistService = nil
 	r.persistDefaults = nil
 }
 
-func (r *addServiceRequest) fixupForAddServiceInternal() {
+func (r *AddServiceRequest) fixupForAddServiceInternal() {
 	r.previousDefaults = nil
 	r.waitForCentralConfig = false
 }
 
 // addServiceInternal adds the given service and checks to the local state.
-func (a *Agent) addServiceInternal(req *addServiceRequest) error {
+func (a *Agent) addServiceInternal(req *AddServiceRequest) error {
 	req.fixupForAddServiceInternal()
 	var (
-		service               = req.service
+		service               = req.Service
 		chkTypes              = req.chkTypes
 		persistService        = req.persistService
 		persistDefaults       = req.persistDefaults
@@ -1974,7 +1952,7 @@ func (a *Agent) addServiceInternal(req *addServiceRequest) error {
 		persistServiceConfig  = req.persistServiceConfig
 		token                 = req.token
 		replaceExistingChecks = req.replaceExistingChecks
-		source                = req.source
+		source                = req.Source
 		snap                  = req.snap
 	)
 
@@ -3100,8 +3078,8 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 		ns.Connect.SidecarService = nil
 
 		sid := ns.CompoundServiceID()
-		err = a.addServiceLocked(&addServiceRequest{
-			service:               ns,
+		err = a.addServiceLocked(&AddServiceRequest{
+			Service:               ns,
 			chkTypes:              chkTypes,
 			previousDefaults:      persistedServiceConfigs[sid],
 			waitForCentralConfig:  false, // exclusively use cached values
@@ -3109,7 +3087,7 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 			persistServiceConfig:  false, // don't rewrite the file with the same data we just read
 			token:                 service.Token,
 			replaceExistingChecks: false, // do default behavior
-			source:                ConfigSourceLocal,
+			Source:                ConfigSourceLocal,
 			snap:                  snap,
 		})
 		if err != nil {
@@ -3119,8 +3097,8 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 		// If there is a sidecar service, register that too.
 		if sidecar != nil {
 			sidecarServiceID := sidecar.CompoundServiceID()
-			err = a.addServiceLocked(&addServiceRequest{
-				service:               sidecar,
+			err = a.addServiceLocked(&AddServiceRequest{
+				Service:               sidecar,
 				chkTypes:              sidecarChecks,
 				previousDefaults:      persistedServiceConfigs[sidecarServiceID],
 				waitForCentralConfig:  false, // exclusively use cached values
@@ -3128,7 +3106,7 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 				persistServiceConfig:  false, // don't rewrite the file with the same data we just read
 				token:                 sidecarToken,
 				replaceExistingChecks: false, // do default behavior
-				source:                ConfigSourceLocal,
+				Source:                ConfigSourceLocal,
 				snap:                  snap,
 			})
 			if err != nil {
@@ -3216,8 +3194,8 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 				"service", serviceID.String(),
 				"file", file,
 			)
-			err = a.addServiceLocked(&addServiceRequest{
-				service:               p.Service,
+			err = a.addServiceLocked(&AddServiceRequest{
+				Service:               p.Service,
 				chkTypes:              nil,
 				previousDefaults:      persistedServiceConfigs[serviceID],
 				waitForCentralConfig:  false, // exclusively use cached values
@@ -3225,7 +3203,7 @@ func (a *Agent) loadServices(conf *config.RuntimeConfig, snap map[structs.CheckI
 				persistServiceConfig:  false, // don't rewrite the file with the same data we just read
 				token:                 p.Token,
 				replaceExistingChecks: false, // do default behavior
-				source:                source,
+				Source:                source,
 				snap:                  snap,
 			})
 			if err != nil {

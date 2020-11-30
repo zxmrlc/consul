@@ -1890,7 +1890,7 @@ func (a *Agent) addServiceLocked(req AddServiceRequest) error {
 		return err
 	}
 
-	if a.config.EnableCentralServiceConfig {
+	if a.config.EnableCentralServiceConfig && (req.Service.IsSidecarProxy() || req.Service.IsGateway()) {
 		return a.serviceManager.AddService(req)
 	}
 

@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/hashicorp/consul/agent/cache"
-	cachetype "github.com/hashicorp/consul/agent/cache-types"
-	"github.com/hashicorp/consul/agent/structs"
 	"github.com/imdario/mergo"
 	"github.com/mitchellh/copystructure"
 	"golang.org/x/net/context"
+
+	"github.com/hashicorp/consul/agent/cache"
+	cachetype "github.com/hashicorp/consul/agent/cache-types"
+	"github.com/hashicorp/consul/agent/structs"
 )
 
 // The ServiceManager is a layer for service registration in between the agent

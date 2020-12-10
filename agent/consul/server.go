@@ -385,6 +385,7 @@ func NewServer(config *Config, flat Deps) (*Server, error) {
 			s,
 			s.config.Datacenter,
 			s.config.PrimaryDatacenter,
+			s.config.DisablePrimaryGatewayFallback,
 		)
 		s.connPool.GatewayResolver = s.gatewayLocator.PickGateway
 	}

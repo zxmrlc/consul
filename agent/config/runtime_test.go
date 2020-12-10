@@ -3218,6 +3218,25 @@ func TestBuilder_BuildAndValidate_ConfigFlagsAndEdgecases(t *testing.T) {
 			err: "'primary_gateways' should only be configured in a secondary datacenter",
 		},
 		{
+			desc: "disable_primary_gateway_fallback requires primary_gateways",
+			args: []string{
+				`-data-dir=` + dataDir,
+			},
+			json: []string{`{
+			  "server": true,
+			  "primary_datacenter": "one",
+			  "datacenter": "two",
+			  "disable_primary_gateway_fallback": true
+			}`},
+			hcl: []string{`
+			  server = true
+			  primary_datacenter = "one"
+			  datacenter = "two"
+			  disable_primary_gateway_fallback = true
+			`},
+			err: "'disable_primary_gateway_fallback' should only be configured when 'primary_gateways' is set",
+		},
+		{
 			desc: "connect.enable_mesh_gateway_wan_federation in secondary with primary_gateways configured",
 			args: []string{
 				`-data-dir=` + dataDir,
@@ -7464,6 +7483,7 @@ func TestSanitize(t *testing.T) {
 		PrimaryGateways: []string{
 			"pmgw_foo=bar pmgw_key=baz pmgw_secret=boom pmgw_bang=bar",
 		},
+		DisablePrimaryGatewayFallback: false,
 		Services: []*structs.ServiceDefinition{
 			{
 				Name:  "foo",
@@ -7700,6 +7720,7 @@ func TestSanitize(t *testing.T) {
 			"pmgw_foo=bar pmgw_key=baz pmgw_secret=boom pmgw_bang=bar"
 		],
 		"PrimaryGatewaysInterval": "0s",
+		"DisablePrimaryGatewayFallback": false,
 		"ReadReplica": false,
 		"RPCAdvertiseAddr": "",
 		"RPCBindAddr": "",

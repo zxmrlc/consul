@@ -47,6 +47,8 @@ func TestGatewayLocator(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	}
 
+	// TODO: test disable primary fallback feature
+
 	t.Run("primary - no data", func(t *testing.T) {
 		for _, role := range serverRoles {
 			t.Run(role, func(t *testing.T) {
@@ -62,6 +64,7 @@ func TestGatewayLocator(t *testing.T) {
 					tsd,
 					"dc1",
 					"dc1",
+					false,
 				)
 				g.SetUseReplicationSignal(isLeader)
 
@@ -103,6 +106,7 @@ func TestGatewayLocator(t *testing.T) {
 					tsd,
 					"dc2",
 					"dc1",
+					false,
 				)
 				g.SetUseReplicationSignal(isLeader)
 
@@ -144,6 +148,7 @@ func TestGatewayLocator(t *testing.T) {
 					tsd,
 					"dc2",
 					"dc1",
+					false,
 				)
 				g.SetUseReplicationSignal(isLeader)
 				g.RefreshPrimaryGatewayFallbackAddresses([]string{
@@ -196,6 +201,7 @@ func TestGatewayLocator(t *testing.T) {
 					tsd,
 					"dc1",
 					"dc1",
+					false,
 				)
 				g.SetUseReplicationSignal(isLeader)
 
@@ -243,6 +249,7 @@ func TestGatewayLocator(t *testing.T) {
 					tsd,
 					"dc2",
 					"dc1",
+					false,
 				)
 				g.SetUseReplicationSignal(isLeader)
 
@@ -285,6 +292,7 @@ func TestGatewayLocator(t *testing.T) {
 			tsd,
 			"dc2",
 			"dc1",
+			false,
 		)
 		g.SetUseReplicationSignal(true)
 
@@ -331,6 +339,7 @@ func TestGatewayLocator(t *testing.T) {
 			tsd,
 			"dc2",
 			"dc1",
+			false,
 		)
 		g.SetUseReplicationSignal(true)
 
@@ -379,6 +388,7 @@ func TestGatewayLocator(t *testing.T) {
 			tsd,
 			"dc2",
 			"dc1",
+			false,
 		)
 		g.SetUseReplicationSignal(true)
 
@@ -430,6 +440,7 @@ func TestGatewayLocator(t *testing.T) {
 			tsd,
 			"dc2",
 			"dc1",
+			false,
 		)
 		g.SetUseReplicationSignal(true)
 

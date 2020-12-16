@@ -180,6 +180,10 @@ func (m *Manager) ensureProxyServiceLocked(ns *structs.NodeService, token string
 	sid := ns.CompoundServiceID()
 	state, ok := m.proxies[sid]
 
+	m.Logger.Debug("ensureProxyServiceLocked called",
+		"service", sid.String(),
+	)
+
 	if ok {
 		if !state.Changed(ns, token) {
 			// No change
@@ -226,6 +230,9 @@ func (m *Manager) ensureProxyServiceLocked(ns *structs.NodeService, token string
 // removeProxyService is called when a service deregisters and frees all
 // resources for that service.
 func (m *Manager) removeProxyServiceLocked(proxyID structs.ServiceID) {
+	m.Logger.Debug("removeeProxyServiceLocked called",
+		"proxyID", proxyID.String(),
+	)
 	state, ok := m.proxies[proxyID]
 	if !ok {
 		return
@@ -310,17 +317,33 @@ func (m *Manager) Watch(proxyID structs.ServiceID) (<-chan *ConfigSnapshot, Canc
 		watchers = make(map[uint64]chan *ConfigSnapshot)
 	}
 	idx := uint64(len(watchers))
+	if _, exists := watchers[idx]; exists {
+		// TODO(rb): BUG
+		m.Logger.Warn("Manager.Watch called and new watcher is overwriting and orphaning another",
+			"proxyID", proxyID.String(),
+			"num_watchers", len(watchers),
+			"idx", idx,
+		)
+	}
 	watchers[idx] = ch
 	m.watchers[proxyID] = watchers
 
 	// Deliver the current snapshot immediately if there is one ready
 	if state, ok := m.proxies[proxyID]; ok {
+		m.Logger.Debug("Manager.Watch >>> fetching CurrentSnapshot from state",
+			"proxyID", proxyID.String(),
+			"idx", idx,
+		)
 		if snap := state.CurrentSnapshot(); snap != nil {
 			// We rely on ch being buffered above and that it's not been passed
 			// anywhere so we must be the only writer so this will never block and
 			// deadlock.
 			ch <- snap
 		}
+		m.Logger.Debug("Manager.Watch <<< fetched CurrentSnapshot from state",
+			"proxyID", proxyID.String(),
+			"idx", idx,
+		)
 	}
 
 	return ch, func() {

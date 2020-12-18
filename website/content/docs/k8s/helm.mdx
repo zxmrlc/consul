@@ -250,7 +250,7 @@ and consider if they're appropriate for your deployment.
       enable `server.exposeGossipAndRPCPorts` and `client.exposeGossipPorts`,
       that will configure the LAN gossip ports on the servers and clients to be
       hostPorts, so if you are running clients and servers on the same node the
-      ports will conflict if they are both 8301.  When you enable
+      ports will conflict if they are both 8301. When you enable
       `server.exposeGossipAndRPCPorts` and `client.exposeGossipPorts`, you must
       change this from the default to an unused port on the host, e.g. 9301. By
       default the LAN gossip port is 8301 and configured as a containerPort on
@@ -372,8 +372,8 @@ and consider if they're appropriate for your deployment.
       beta.kubernetes.io/arch: amd64
     ```
 
-  - `priorityClassName` ((#v-server-priorityclassname)) (`string`) - This value references an existing
-    Kubernetes [priorityClassName](https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#pod-priority) that can be assigned to server pods.
+  - `priorityClassName` ((#v-server-priorityclassname)) (`string: ""`) - This value references an existing
+    Kubernetes `priorityClassName` (https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/#pod-priority) that can be assigned to server pods.
 
   - `extraLabels` ((#v-server-extralabels)) (`map`) - Extra labels to attach to the server pods. This should be a YAML map.
 
@@ -401,8 +401,7 @@ and consider if they're appropriate for your deployment.
         "annotation-key": "annotation-value"
       ```
 
-  - `extraEnvironmentVars` ((#v-server-extra-environment-vars)) (`map`) - extraEnvironmentVars
-    is a list of extra environment variables to set within the stateful set.
+  - `extraEnvironmentVars` ((#v-server-extraenvironmentvars)) (`map`) - A list of extra environment variables to set within the stateful set.
     These could be used to include proxy settings required for cloud auto-join
     feature, in case kubernetes cluster is behind egress http proxies. Additionally,
     it could be used to configure custom consul parameters.
@@ -554,11 +553,10 @@ and consider if they're appropriate for your deployment.
       "sample/annotation2": "bar"
     ```
 
-  - `extraEnvironmentVars` ((#v-client-extra-environment-vars)) (`map`) - extraEnvironmentVars
-    is a list of extra environment variables to set with the pod. These could be
-    used to include proxy settings required for cloud auto-join feature,
-    in case kubernetes cluster is behind egress http proxies. Additionally, it
-    could be used to configure custom consul parameters.
+  - `extraEnvironmentVars` ((#v-client-extraenvironmentvars)) (`map`) - A list of extra environment variables to set within the stateful set.
+    These could be used to include proxy settings required for cloud auto-join
+    feature, in case kubernetes cluster is behind egress http proxies. Additionally,
+    it could be used to configure custom consul parameters.
 
   - `dnsPolicy` ((#v-client-dnspolicy)) (`string: null`) - This value defines the [Pod DNS policy](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy)
     for client pods to use.

@@ -135,7 +135,7 @@ func TestBuilder_validateEnterpriseConfigKeys(t *testing.T) {
 
 	for name, tcase := range cases {
 		t.Run(name, func(t *testing.T) {
-			b := &Builder{}
+			b := &builder{}
 
 			err := b.validateEnterpriseConfigKeys(&tcase.config, tcase.keys)
 			if len(tcase.badKeys) > 0 {

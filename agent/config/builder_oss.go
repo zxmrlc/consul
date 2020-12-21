@@ -54,11 +54,11 @@ func (e enterpriseConfigKeyError) Error() string {
 	return fmt.Sprintf("%q is a Consul Enterprise configuration and will have no effect", e.key)
 }
 
-func (*Builder) BuildEnterpriseRuntimeConfig(_ *RuntimeConfig, _ *Config) error {
+func (*builder) BuildEnterpriseRuntimeConfig(_ *RuntimeConfig, _ *Config) error {
 	return nil
 }
 
-func (*Builder) validateEnterpriseConfig(_ RuntimeConfig) error {
+func (*builder) validateEnterpriseConfig(_ RuntimeConfig) error {
 	return nil
 }
 
@@ -66,7 +66,7 @@ func (*Builder) validateEnterpriseConfig(_ RuntimeConfig) error {
 // configuration items after Parsing but before merging into the overall
 // configuration. The original intent is to use it to ensure that we warn
 // for enterprise configurations used in OSS.
-func (b *Builder) validateEnterpriseConfigKeys(config *Config, keys []string) error {
+func (b *builder) validateEnterpriseConfigKeys(config *Config, keys []string) error {
 	var err error
 
 	for _, k := range keys {

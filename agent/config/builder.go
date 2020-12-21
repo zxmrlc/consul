@@ -80,7 +80,7 @@ type LoadOpts struct {
 // The caller is responsible for handling any warnings in LoadResult.Warnings.
 func Load(opts LoadOpts) (LoadResult, error) {
 	r := LoadResult{}
-	b, err := NewBuilder(opts)
+	b, err := newBuilder(opts)
 	if err != nil {
 		return r, err
 	}
@@ -98,32 +98,20 @@ type LoadResult struct {
 	Warnings      []string
 }
 
-// Builder constructs a valid runtime configuration from multiple
+// builder constructs and validates a runtime configuration from multiple
 // configuration sources.
-//
-// To build the runtime configuration first call Build() which merges
-// the sources in a pre-defined order, converts the data types and
-// structures into their final form and performs the syntactic
-// validation.
 //
 // The sources are merged in the following order:
 //
 //  * default configuration
 //  * config files in alphabetical order
 //  * command line arguments
+//  * overrides
 //
-// The config sources are merged sequentially and later values
-// overwrite previously set values. Slice values are merged by
-// concatenating the two slices. Map values are merged by over-
-// laying the later maps on top of earlier ones.
-//
-// Then call Validate() to perform the semantic validation to ensure
-// that the configuration is ready to be used.
-//
-// Splitting the construction into two phases greatly simplifies testing
-// since not all pre-conditions have to be satisfied when performing
-// syntactical tests.
-type Builder struct {
+// The config sources are merged sequentially and later values overwrite
+// previously set values. Slice values are merged by concatenating the two slices.
+// Map values are merged by over-laying the later maps on top of earlier ones.
+type builder struct {
 	// devMode stores the value of the -dev flag, and enables development mode.
 	devMode *bool
 
@@ -151,8 +139,8 @@ type Builder struct {
 	err error
 }
 
-// NewBuilder returns a new configuration Builder from the LoadOpts.
-func NewBuilder(opts LoadOpts) (*Builder, error) {
+// newBuilder returns a new configuration Builder from the LoadOpts.
+func newBuilder(opts LoadOpts) (*builder, error) {
 	configFormat := opts.ConfigFormat
 	if configFormat != "" && configFormat != "json" && configFormat != "hcl" {
 		return nil, fmt.Errorf("config: -config-format must be either 'hcl' or 'json'")
@@ -166,7 +154,7 @@ func NewBuilder(opts LoadOpts) (*Builder, error) {
 		return FileSource{Name: name, Format: "json", Data: string(b)}
 	}
 
-	b := &Builder{
+	b := &builder{
 		devMode: opts.DevMode,
 		Head:    []Source{DefaultSource(), DefaultEnterpriseSource()},
 	}
@@ -214,7 +202,7 @@ func NewBuilder(opts LoadOpts) (*Builder, error) {
 // sourcesFromPath reads a single config file or all files in a directory (but
 // not its sub-directories) and returns Sources created from the
 // files.
-func (b *Builder) sourcesFromPath(path string, format string) ([]Source, error) {
+func (b *builder) sourcesFromPath(path string, format string) ([]Source, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: Open failed on %s. %s", path, err)
@@ -315,7 +303,7 @@ func (a byName) Len() int           { return len(a) }
 func (a byName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byName) Less(i, j int) bool { return a[i].Name() < a[j].Name() }
 
-func (b *Builder) BuildAndValidate() (RuntimeConfig, error) {
+func (b *builder) BuildAndValidate() (RuntimeConfig, error) {
 	rt, err := b.Build()
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -332,7 +320,7 @@ func (b *Builder) BuildAndValidate() (RuntimeConfig, error) {
 // precedence over the other sources. If the error is nil then
 // warnings can still contain deprecation or format warnings that should
 // be presented to the user.
-func (b *Builder) Build() (rt RuntimeConfig, err error) {
+func (b *builder) Build() (rt RuntimeConfig, err error) {
 	srcs := make([]Source, 0, len(b.Head)+len(b.Sources)+len(b.Tail))
 	srcs = append(srcs, b.Head...)
 	srcs = append(srcs, b.Sources...)
@@ -1187,7 +1175,7 @@ func validateBasicName(field, value string, allowEmpty bool) error {
 }
 
 // Validate performs semantic validation of the runtime configuration.
-func (b *Builder) Validate(rt RuntimeConfig) error {
+func (b *builder) Validate(rt RuntimeConfig) error {
 
 	// validContentPath defines a regexp for a valid content path name.
 	var validContentPath = regexp.MustCompile(`^[A-Za-z0-9/_-]+$`)
@@ -1532,7 +1520,7 @@ func addrsUnique(inuse map[string]string, name string, addrs []net.Addr) error {
 
 // splitSlicesAndValues moves all slice values defined in c to 'slices'
 // and all other values to 'values'.
-func (b *Builder) splitSlicesAndValues(c Config) (slices, values Config) {
+func (b *builder) splitSlicesAndValues(c Config) (slices, values Config) {
 	v, t := reflect.ValueOf(c), reflect.TypeOf(c)
 	rs, rv := reflect.New(t), reflect.New(t)
 
@@ -1547,11 +1535,11 @@ func (b *Builder) splitSlicesAndValues(c Config) (slices, values Config) {
 	return rs.Elem().Interface().(Config), rv.Elem().Interface().(Config)
 }
 
-func (b *Builder) warn(msg string, args ...interface{}) {
+func (b *builder) warn(msg string, args ...interface{}) {
 	b.Warnings = append(b.Warnings, fmt.Sprintf(msg, args...))
 }
 
-func (b *Builder) checkVal(v *CheckDefinition) *structs.CheckDefinition {
+func (b *builder) checkVal(v *CheckDefinition) *structs.CheckDefinition {
 	if v == nil {
 		return nil
 	}
@@ -1589,7 +1577,7 @@ func (b *Builder) checkVal(v *CheckDefinition) *structs.CheckDefinition {
 	}
 }
 
-func (b *Builder) svcTaggedAddresses(v map[string]ServiceAddress) map[string]structs.ServiceAddress {
+func (b *builder) svcTaggedAddresses(v map[string]ServiceAddress) map[string]structs.ServiceAddress {
 	if len(v) <= 0 {
 		return nil
 	}
@@ -1609,7 +1597,7 @@ func (b *Builder) svcTaggedAddresses(v map[string]ServiceAddress) map[string]str
 	return svcAddrs
 }
 
-func (b *Builder) serviceVal(v *ServiceDefinition) *structs.ServiceDefinition {
+func (b *builder) serviceVal(v *ServiceDefinition) *structs.ServiceDefinition {
 	if v == nil {
 		return nil
 	}
@@ -1662,7 +1650,7 @@ func (b *Builder) serviceVal(v *ServiceDefinition) *structs.ServiceDefinition {
 	}
 }
 
-func (b *Builder) serviceKindVal(v *string) structs.ServiceKind {
+func (b *builder) serviceKindVal(v *string) structs.ServiceKind {
 	if v == nil {
 		return structs.ServiceKindTypical
 	}
@@ -1680,7 +1668,7 @@ func (b *Builder) serviceKindVal(v *string) structs.ServiceKind {
 	}
 }
 
-func (b *Builder) serviceProxyVal(v *ServiceProxy) *structs.ConnectProxyConfig {
+func (b *builder) serviceProxyVal(v *ServiceProxy) *structs.ConnectProxyConfig {
 	if v == nil {
 		return nil
 	}
@@ -1697,7 +1685,7 @@ func (b *Builder) serviceProxyVal(v *ServiceProxy) *structs.ConnectProxyConfig {
 	}
 }
 
-func (b *Builder) upstreamsVal(v []Upstream) structs.Upstreams {
+func (b *builder) upstreamsVal(v []Upstream) structs.Upstreams {
 	ups := make(structs.Upstreams, len(v))
 	for i, u := range v {
 		ups[i] = structs.Upstream{
@@ -1717,7 +1705,7 @@ func (b *Builder) upstreamsVal(v []Upstream) structs.Upstreams {
 	return ups
 }
 
-func (b *Builder) meshGatewayConfVal(mgConf *MeshGatewayConfig) structs.MeshGatewayConfig {
+func (b *builder) meshGatewayConfVal(mgConf *MeshGatewayConfig) structs.MeshGatewayConfig {
 	cfg := structs.MeshGatewayConfig{Mode: structs.MeshGatewayModeDefault}
 	if mgConf == nil || mgConf.Mode == nil {
 		// return defaults
@@ -1734,7 +1722,7 @@ func (b *Builder) meshGatewayConfVal(mgConf *MeshGatewayConfig) structs.MeshGate
 	return cfg
 }
 
-func (b *Builder) exposeConfVal(v *ExposeConfig) structs.ExposeConfig {
+func (b *builder) exposeConfVal(v *ExposeConfig) structs.ExposeConfig {
 	var out structs.ExposeConfig
 	if v == nil {
 		return out
@@ -1745,7 +1733,7 @@ func (b *Builder) exposeConfVal(v *ExposeConfig) structs.ExposeConfig {
 	return out
 }
 
-func (b *Builder) pathsVal(v []ExposePath) []structs.ExposePath {
+func (b *builder) pathsVal(v []ExposePath) []structs.ExposePath {
 	paths := make([]structs.ExposePath, len(v))
 	for i, p := range v {
 		paths[i] = structs.ExposePath{
@@ -1758,7 +1746,7 @@ func (b *Builder) pathsVal(v []ExposePath) []structs.ExposePath {
 	return paths
 }
 
-func (b *Builder) serviceConnectVal(v *ServiceConnect) *structs.ServiceConnect {
+func (b *builder) serviceConnectVal(v *ServiceConnect) *structs.ServiceConnect {
 	if v == nil {
 		return nil
 	}
@@ -1784,7 +1772,7 @@ func (b *Builder) serviceConnectVal(v *ServiceConnect) *structs.ServiceConnect {
 	}
 }
 
-func (b *Builder) uiConfigVal(v RawUIConfig) UIConfig {
+func (b *builder) uiConfigVal(v RawUIConfig) UIConfig {
 	return UIConfig{
 		Enabled:                    b.boolVal(v.Enabled),
 		Dir:                        b.stringVal(v.Dir),
@@ -1797,7 +1785,7 @@ func (b *Builder) uiConfigVal(v RawUIConfig) UIConfig {
 	}
 }
 
-func (b *Builder) uiMetricsProxyVal(v RawUIMetricsProxy) UIMetricsProxy {
+func (b *builder) uiMetricsProxyVal(v RawUIMetricsProxy) UIMetricsProxy {
 	var hdrs []UIMetricsProxyAddHeader
 
 	for _, hdr := range v.AddHeaders {
@@ -1814,7 +1802,7 @@ func (b *Builder) uiMetricsProxyVal(v RawUIMetricsProxy) UIMetricsProxy {
 	}
 }
 
-func (b *Builder) boolValWithDefault(v *bool, defaultVal bool) bool {
+func (b *builder) boolValWithDefault(v *bool, defaultVal bool) bool {
 	if v == nil {
 		return defaultVal
 	}
@@ -1822,11 +1810,11 @@ func (b *Builder) boolValWithDefault(v *bool, defaultVal bool) bool {
 	return *v
 }
 
-func (b *Builder) boolVal(v *bool) bool {
+func (b *builder) boolVal(v *bool) bool {
 	return b.boolValWithDefault(v, false)
 }
 
-func (b *Builder) durationValWithDefault(name string, v *string, defaultVal time.Duration) (d time.Duration) {
+func (b *builder) durationValWithDefault(name string, v *string, defaultVal time.Duration) (d time.Duration) {
 	if v == nil {
 		return defaultVal
 	}
@@ -1837,44 +1825,44 @@ func (b *Builder) durationValWithDefault(name string, v *string, defaultVal time
 	return d
 }
 
-func (b *Builder) durationVal(name string, v *string) (d time.Duration) {
+func (b *builder) durationVal(name string, v *string) (d time.Duration) {
 	return b.durationValWithDefault(name, v, 0)
 }
 
-func (b *Builder) intValWithDefault(v *int, defaultVal int) int {
+func (b *builder) intValWithDefault(v *int, defaultVal int) int {
 	if v == nil {
 		return defaultVal
 	}
 	return *v
 }
 
-func (b *Builder) intVal(v *int) int {
+func (b *builder) intVal(v *int) int {
 	return b.intValWithDefault(v, 0)
 }
 
-func (b *Builder) uintVal(v *uint) uint {
+func (b *builder) uintVal(v *uint) uint {
 	return b.uintValWithDefault(v, 0)
 }
 
-func (b *Builder) uintValWithDefault(v *uint, defaultVal uint) uint {
+func (b *builder) uintValWithDefault(v *uint, defaultVal uint) uint {
 	if v == nil {
 		return defaultVal
 	}
 	return *v
 }
 
-func (b *Builder) uint64ValWithDefault(v *uint64, defaultVal uint64) uint64 {
+func (b *builder) uint64ValWithDefault(v *uint64, defaultVal uint64) uint64 {
 	if v == nil {
 		return defaultVal
 	}
 	return *v
 }
 
-func (b *Builder) uint64Val(v *uint64) uint64 {
+func (b *builder) uint64Val(v *uint64) uint64 {
 	return b.uint64ValWithDefault(v, 0)
 }
 
-func (b *Builder) portVal(name string, v *int) int {
+func (b *builder) portVal(name string, v *int) int {
 	if v == nil || *v <= 0 {
 		return -1
 	}
@@ -1884,18 +1872,18 @@ func (b *Builder) portVal(name string, v *int) int {
 	return *v
 }
 
-func (b *Builder) stringValWithDefault(v *string, defaultVal string) string {
+func (b *builder) stringValWithDefault(v *string, defaultVal string) string {
 	if v == nil {
 		return defaultVal
 	}
 	return *v
 }
 
-func (b *Builder) stringVal(v *string) string {
+func (b *builder) stringVal(v *string) string {
 	return b.stringValWithDefault(v, "")
 }
 
-func (b *Builder) float64ValWithDefault(v *float64, defaultVal float64) float64 {
+func (b *builder) float64ValWithDefault(v *float64, defaultVal float64) float64 {
 	if v == nil {
 		return defaultVal
 	}
@@ -1903,11 +1891,11 @@ func (b *Builder) float64ValWithDefault(v *float64, defaultVal float64) float64 
 	return *v
 }
 
-func (b *Builder) float64Val(v *float64) float64 {
+func (b *builder) float64Val(v *float64) float64 {
 	return b.float64ValWithDefault(v, 0)
 }
 
-func (b *Builder) cidrsVal(name string, v []string) (nets []*net.IPNet) {
+func (b *builder) cidrsVal(name string, v []string) (nets []*net.IPNet) {
 	if v == nil {
 		return
 	}
@@ -1923,7 +1911,7 @@ func (b *Builder) cidrsVal(name string, v []string) (nets []*net.IPNet) {
 	return
 }
 
-func (b *Builder) tlsCipherSuites(name string, v *string) []uint16 {
+func (b *builder) tlsCipherSuites(name string, v *string) []uint16 {
 	if v == nil {
 		return nil
 	}
@@ -1936,7 +1924,7 @@ func (b *Builder) tlsCipherSuites(name string, v *string) []uint16 {
 	return a
 }
 
-func (b *Builder) nodeName(v *string) string {
+func (b *builder) nodeName(v *string) string {
 	nodeName := b.stringVal(v)
 	if nodeName == "" {
 		fn := b.hostname
@@ -1955,7 +1943,7 @@ func (b *Builder) nodeName(v *string) string {
 
 // expandAddrs expands the go-sockaddr template in s and returns the
 // result as a list of *net.IPAddr and *net.UnixAddr.
-func (b *Builder) expandAddrs(name string, s *string) []net.Addr {
+func (b *builder) expandAddrs(name string, s *string) []net.Addr {
 	if s == nil || *s == "" {
 		return nil
 	}
@@ -1994,7 +1982,7 @@ func (b *Builder) expandAddrs(name string, s *string) []net.Addr {
 // error set. In contrast to expandAddrs, expandOptionalAddrs does not validate
 // if the result contains valid addresses and returns a list of strings.
 // However, if the expansion of the go-sockaddr template fails an error is set.
-func (b *Builder) expandOptionalAddrs(name string, s *string) []string {
+func (b *builder) expandOptionalAddrs(name string, s *string) []string {
 	if s == nil || *s == "" {
 		return nil
 	}
@@ -2014,7 +2002,7 @@ func (b *Builder) expandOptionalAddrs(name string, s *string) []string {
 	}
 }
 
-func (b *Builder) expandAllOptionalAddrs(name string, addrs []string) []string {
+func (b *builder) expandAllOptionalAddrs(name string, addrs []string) []string {
 	out := make([]string, 0, len(addrs))
 	for _, a := range addrs {
 		expanded := b.expandOptionalAddrs(name, &a)
@@ -2028,7 +2016,7 @@ func (b *Builder) expandAllOptionalAddrs(name string, addrs []string) []string {
 // expandIPs expands the go-sockaddr template in s and returns a list of
 // *net.IPAddr. If one of the expanded addresses is a unix socket
 // address an error is set and nil is returned.
-func (b *Builder) expandIPs(name string, s *string) []*net.IPAddr {
+func (b *builder) expandIPs(name string, s *string) []*net.IPAddr {
 	if s == nil || *s == "" {
 		return nil
 	}
@@ -2054,7 +2042,7 @@ func (b *Builder) expandIPs(name string, s *string) []*net.IPAddr {
 // first address which is either a *net.IPAddr or a *net.UnixAddr. If
 // the template expands to multiple addresses an error is set and nil
 // is returned.
-func (b *Builder) expandFirstAddr(name string, s *string) net.Addr {
+func (b *builder) expandFirstAddr(name string, s *string) net.Addr {
 	if s == nil || *s == "" {
 		return nil
 	}
@@ -2077,7 +2065,7 @@ func (b *Builder) expandFirstAddr(name string, s *string) net.Addr {
 // expandFirstIP expands the go-sockaddr template in s and returns the
 // first address if it is not a unix socket address. If the template
 // expands to multiple addresses an error is set and nil is returned.
-func (b *Builder) expandFirstIP(name string, s *string) *net.IPAddr {
+func (b *builder) expandFirstIP(name string, s *string) *net.IPAddr {
 	if s == nil || *s == "" {
 		return nil
 	}
@@ -2098,14 +2086,14 @@ func (b *Builder) expandFirstIP(name string, s *string) *net.IPAddr {
 	}
 }
 
-func (b *Builder) makeIPAddr(pri *net.IPAddr, sec *net.IPAddr) *net.IPAddr {
+func (b *builder) makeIPAddr(pri *net.IPAddr, sec *net.IPAddr) *net.IPAddr {
 	if pri != nil {
 		return pri
 	}
 	return sec
 }
 
-func (b *Builder) makeTCPAddr(pri *net.IPAddr, sec net.Addr, port int) *net.TCPAddr {
+func (b *builder) makeTCPAddr(pri *net.IPAddr, sec net.Addr, port int) *net.TCPAddr {
 	if pri == nil && reflect.ValueOf(sec).IsNil() || port <= 0 {
 		return nil
 	}
@@ -2126,7 +2114,7 @@ func (b *Builder) makeTCPAddr(pri *net.IPAddr, sec net.Addr, port int) *net.TCPA
 // makeAddr creates an *net.TCPAddr or a *net.UnixAddr from either the
 // primary or secondary address and the given port. If the port is <= 0
 // then the address is considered to be disabled and nil is returned.
-func (b *Builder) makeAddr(pri, sec net.Addr, port int) net.Addr {
+func (b *builder) makeAddr(pri, sec net.Addr, port int) net.Addr {
 	if reflect.ValueOf(pri).IsNil() && reflect.ValueOf(sec).IsNil() || port <= 0 {
 		return nil
 	}
@@ -2148,7 +2136,7 @@ func (b *Builder) makeAddr(pri, sec net.Addr, port int) net.Addr {
 // from either the primary or secondary addresses and the given port.
 // If the port is <= 0 then the address is considered to be disabled
 // and nil is returned.
-func (b *Builder) makeAddrs(pri []net.Addr, sec []*net.IPAddr, port int) []net.Addr {
+func (b *builder) makeAddrs(pri []net.Addr, sec []*net.IPAddr, port int) []net.Addr {
 	if len(pri) == 0 && len(sec) == 0 || port <= 0 {
 		return nil
 	}
@@ -2167,12 +2155,12 @@ func (b *Builder) makeAddrs(pri []net.Addr, sec []*net.IPAddr, port int) []net.A
 }
 
 // isUnixAddr returns true when the given address is a unix socket address type.
-func (b *Builder) isUnixAddr(a net.Addr) bool {
+func (b *builder) isUnixAddr(a net.Addr) bool {
 	_, ok := a.(*net.UnixAddr)
 	return a != nil && ok
 }
 
-func (b *Builder) autoConfigVal(raw AutoConfigRaw) AutoConfig {
+func (b *builder) autoConfigVal(raw AutoConfigRaw) AutoConfig {
 	var val AutoConfig
 
 	val.Enabled = b.boolValWithDefault(raw.Enabled, false)
@@ -2205,7 +2193,7 @@ func (b *Builder) autoConfigVal(raw AutoConfigRaw) AutoConfig {
 	return val
 }
 
-func (b *Builder) autoConfigAuthorizerVal(raw AutoConfigAuthorizationRaw) AutoConfigAuthorizer {
+func (b *builder) autoConfigAuthorizerVal(raw AutoConfigAuthorizationRaw) AutoConfigAuthorizer {
 	// Our config file syntax wraps the static authorizer configuration in a "static" stanza. However
 	// internally we do not support multiple configured authorization types so the RuntimeConfig just
 	// inlines the static one. While we can and probably should extend the authorization types in the
@@ -2240,7 +2228,7 @@ func (b *Builder) autoConfigAuthorizerVal(raw AutoConfigAuthorizationRaw) AutoCo
 	return val
 }
 
-func (b *Builder) validateAutoConfig(rt RuntimeConfig) error {
+func (b *builder) validateAutoConfig(rt RuntimeConfig) error {
 	autoconf := rt.AutoConfig
 
 	if err := b.validateAutoConfigAuthorizer(rt); err != nil {
@@ -2278,7 +2266,7 @@ func (b *Builder) validateAutoConfig(rt RuntimeConfig) error {
 	return nil
 }
 
-func (b *Builder) validateAutoConfigAuthorizer(rt RuntimeConfig) error {
+func (b *builder) validateAutoConfigAuthorizer(rt RuntimeConfig) error {
 	authz := rt.AutoConfig.Authorizer
 
 	if !authz.Enabled {

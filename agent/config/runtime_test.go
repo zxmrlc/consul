@@ -4883,7 +4883,7 @@ func testConfig(t *testing.T, tests []configTest, dataDir string) {
 				}()
 
 				// Then create a builder with the flags.
-				b, err := NewBuilder(flags)
+				b, err := newBuilder(flags)
 				if err != nil {
 					t.Fatal("NewBuilder", err)
 				}
@@ -4937,7 +4937,7 @@ func testConfig(t *testing.T, tests []configTest, dataDir string) {
 				// build a default configuration, then patch the fields we expect to change
 				// and compare it with the generated configuration. Since the expected
 				// runtime config has been validated we do not need to validate it again.
-				x, err := NewBuilder(LoadOpts{})
+				x, err := newBuilder(LoadOpts{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -7203,7 +7203,7 @@ func TestFullConfig(t *testing.T) {
 			}
 			require.Len(t, fs.Args(), 0)
 
-			b, err := NewBuilder(flags)
+			b, err := newBuilder(flags)
 			if err != nil {
 				t.Fatalf("NewBuilder: %s", err)
 			}

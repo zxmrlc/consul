@@ -277,15 +277,3 @@ func DevConsulSource() Source {
 	`,
 	}
 }
-
-func DefaultRuntimeConfig(hcl string) *RuntimeConfig {
-	b, err := NewBuilder(LoadOpts{HCL: []string{hcl}})
-	if err != nil {
-		panic(err)
-	}
-	rt, err := b.BuildAndValidate()
-	if err != nil {
-		panic(err)
-	}
-	return &rt
-}

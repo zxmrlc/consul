@@ -4967,8 +4967,8 @@ func testConfig(t *testing.T, tests []configTest, dataDir string) {
 	}
 }
 
-func TestNewBuilder_InvalidConfigFormat(t *testing.T) {
-	_, err := NewBuilder(LoadOpts{ConfigFormat: "yaml"})
+func TestLoad_InvalidConfigFormat(t *testing.T) {
+	_, err := Load(LoadOpts{ConfigFormat: "yaml"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "-config-format must be either 'hcl' or 'json'")
 }

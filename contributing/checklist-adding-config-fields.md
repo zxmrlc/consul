@@ -29,10 +29,10 @@ There are four specific cases covered with increasing complexity:
    `agent/config/runtime.go`.
  - [ ] Add an appropriate parser/setter in `agent/config/builder.go` to
    translate.
- - [ ] Add the new field with a random value to both the JSON and HCL blobs in
-   `TestFullConfig` in `agent/config/runtime_test.go`, it should fail now, then
-   add the same random value to the expected struct in that test so it passes
-   again.
+ - [ ] Add the new field with a random value to both the JSON and HCL files in
+   `agent/config/testdata/full-config.*`, which should cause the test to fail.
+   Then update the expected value in `TestLoad_FullConfig` in
+   `agent/config/runtime_test.go` to make the test pass again.
  - [ ] Add the new field and it's default value to `TestSanitize` in the same
    file. (Running the test first gives you a nice diff which can save working
    out where etc.)

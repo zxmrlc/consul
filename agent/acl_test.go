@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/serf/serf"
+
 	"github.com/hashicorp/consul/acl"
 	"github.com/hashicorp/consul/agent/config"
 	"github.com/hashicorp/consul/agent/consul"
@@ -15,8 +18,6 @@ import (
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/sdk/testutil"
 	"github.com/hashicorp/consul/types"
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/serf/serf"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,16 +43,17 @@ func NewTestACLAgent(t *testing.T, name string, hcl string, resolveAuthz authzRe
 	dataDir := testutil.TempDir(t, "acl-agent")
 
 	logBuffer := testutil.NewLogBuffer(t)
-	loader := func(source config.Source) (*config.RuntimeConfig, []string, error) {
+	loader := func(source config.Source) (config.LoadResult, error) {
 		dataDir := fmt.Sprintf(`data_dir = "%s"`, dataDir)
-		opts := config.BuilderOpts{
-			HCL: []string{TestConfigHCL(NodeID()), hcl, dataDir},
+		opts := config.LoadOpts{
+			HCL:           []string{TestConfigHCL(NodeID()), hcl, dataDir},
+			DefaultConfig: source,
 		}
-		cfg, warnings, err := config.Load(opts, source)
-		if cfg != nil {
-			cfg.Telemetry.Disable = true
+		result, err := config.Load(opts)
+		if result.RuntimeConfig != nil {
+			result.RuntimeConfig.Telemetry.Disable = true
 		}
-		return cfg, warnings, err
+		return result, err
 	}
 	bd, err := NewBaseDeps(loader, logBuffer)
 	require.NoError(t, err)

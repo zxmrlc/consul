@@ -20,7 +20,7 @@ type Source interface {
 	// Source returns an identifier for the Source that can be used in error message
 	Source() string
 	// Parse a configuration and return the result.
-	Parse() (Config, mapstructure.Metadata, error)
+	Parse() (Config, Metadata, error)
 }
 
 // ErrNoData indicates to Builder.Build that the source contained no data, and
@@ -39,9 +39,10 @@ func (f FileSource) Source() string {
 }
 
 // Parse a config file in either JSON or HCL format.
-func (f FileSource) Parse() (Config, mapstructure.Metadata, error) {
+func (f FileSource) Parse() (Config, Metadata, error) {
+	m := Metadata{}
 	if f.Name == "" || f.Data == "" {
-		return Config{}, mapstructure.Metadata{}, ErrNoData
+		return Config{}, m, ErrNoData
 	}
 
 	var raw map[string]interface{}
@@ -56,10 +57,10 @@ func (f FileSource) Parse() (Config, mapstructure.Metadata, error) {
 		err = fmt.Errorf("invalid format: %s", f.Format)
 	}
 	if err != nil {
-		return Config{}, md, err
+		return Config{}, m, err
 	}
 
-	var c Config
+	var target decodeTarget
 	d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			// decode.HookWeakDecodeFromSlice is only necessary when reading from
@@ -71,16 +72,30 @@ func (f FileSource) Parse() (Config, mapstructure.Metadata, error) {
 			decode.HookTranslateKeys,
 		),
 		Metadata: &md,
-		Result:   &c,
+		Result:   &target,
 	})
 	if err != nil {
-		return Config{}, md, err
+		return Config{}, m, err
 	}
 	if err := d.Decode(raw); err != nil {
-		return Config{}, md, err
+		return Config{}, m, err
 	}
 
-	return c, md, nil
+	c, warns := applyDeprecatedConfig(&target)
+	m.Unused = md.Unused
+	m.Keys = md.Keys
+	m.Warnings = warns
+	return c, m, nil
+}
+
+// Metadata created by Source.Parse
+type Metadata struct {
+	// Keys used in the config file.
+	Keys []string
+	// Unused keys that did not match any struct fields.
+	Unused []string
+	// Warnings caused by deprecated fields
+	Warnings []string
 }
 
 // LiteralSource implements Source and returns an existing Config struct.
@@ -93,8 +108,13 @@ func (l LiteralSource) Source() string {
 	return l.Name
 }
 
-func (l LiteralSource) Parse() (Config, mapstructure.Metadata, error) {
-	return l.Config, mapstructure.Metadata{}, nil
+func (l LiteralSource) Parse() (Config, Metadata, error) {
+	return l.Config, Metadata{}, nil
+}
+
+type decodeTarget struct {
+	Config           `mapstructure:",squash"`
+	DeprecatedConfig `mapstructure:",squash"`
 }
 
 // Cache configuration for the agent/cache.
@@ -116,11 +136,7 @@ type Cache struct {
 // changed and refactored at will since this will break existing setups.
 type Config struct {
 	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl.tokens" stanza
-	ACLAgentMasterToken *string `json:"acl_agent_master_token,omitempty" hcl:"acl_agent_master_token" mapstructure:"acl_agent_master_token"`
-	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl.tokens" stanza
 	ACLAgentToken *string `json:"acl_agent_token,omitempty" hcl:"acl_agent_token" mapstructure:"acl_agent_token"`
-	// DEPRECATED (ACL-Legacy-Compat) - moved to "primary_datacenter"
-	ACLDatacenter *string `json:"acl_datacenter,omitempty" hcl:"acl_datacenter" mapstructure:"acl_datacenter"`
 	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl" stanza
 	ACLDefaultPolicy *string `json:"acl_default_policy,omitempty" hcl:"acl_default_policy" mapstructure:"acl_default_policy"`
 	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl" stanza
@@ -134,7 +150,8 @@ type Config struct {
 	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl.tokens" stanza
 	ACLTTL *string `json:"acl_ttl,omitempty" hcl:"acl_ttl" mapstructure:"acl_ttl"`
 	// DEPRECATED (ACL-Legacy-Compat) - moved into the "acl.tokens" stanza
-	ACLToken                         *string             `json:"acl_token,omitempty" hcl:"acl_token" mapstructure:"acl_token"`
+	ACLToken *string `json:"acl_token,omitempty" hcl:"acl_token" mapstructure:"acl_token"`
+
 	ACL                              ACL                 `json:"acl,omitempty" hcl:"acl" mapstructure:"acl"`
 	Addresses                        Addresses           `json:"addresses,omitempty" hcl:"addresses" mapstructure:"addresses"`
 	AdvertiseAddrLAN                 *string             `json:"advertise_addr,omitempty" hcl:"advertise_addr" mapstructure:"advertise_addr"`

@@ -345,8 +345,6 @@ type ConfigSnapshot struct {
 func (s *ConfigSnapshot) Valid() bool {
 	switch s.Kind {
 	case structs.ServiceKindConnectProxy:
-		fmt.Println("[proxycfg] Checking snapshot for proxy",
-			"proxyID", s.ProxyID, "roots are set", s.Roots != nil, "leaf is set", s.ConnectProxy.Leaf, "intentions set", s.ConnectProxy.IntentionsSet)
 		return s.Roots != nil &&
 			s.ConnectProxy.Leaf != nil &&
 			s.ConnectProxy.IntentionsSet

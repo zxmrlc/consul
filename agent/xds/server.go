@@ -7,8 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
-
 	envoy "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	envoycore "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	envoydisco "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
@@ -286,28 +284,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 			extendAuthTimer()
 
 		case req, ok = <-reqCh:
-			{
-				var (
-					typeURL string
-					cluster string
-					id      string
-					proxyID structs.ServiceID
-				)
-				if req != nil {
-					typeURL = req.TypeUrl
-					if req.Node != nil {
-						cluster = req.Node.Cluster
-					}
-					if req.Node != nil {
-						id = req.Node.Id
-						proxyID = structs.NewServiceID(req.Node.Id, parseEnterpriseMeta(req.Node))
-					}
-				}
-				s.Logger.Info("[xDS] received discovery request", "typeUrl", typeURL, "ok", ok,
-					"cluster", cluster, "id", id,
-					"proxy", proxyID.String(),
-				)
-			}
 			if !ok {
 				// reqCh is closed when stream.Recv errors which is how we detect client
 				// going away. AFAICT the stream.Context() is only canceled once the
@@ -329,16 +305,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 			}
 
 			if handler, ok := handlers[req.TypeUrl]; ok {
-				var cluster string
-				if req.Node != nil {
-					cluster = req.Node.Cluster
-				}
-
-				var id string
-				if req.Node != nil {
-					id = req.Node.Id
-				}
-				s.Logger.Info("[xDS] preparing handler", "typeUrl", req.TypeUrl, "cluster", cluster, "id", id)
 				handler.Recv(req, node, proxyFeatures)
 			}
 		case cfgSnap = <-stateCh:
@@ -366,8 +332,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 			// state machine.
 			defer watchCancel()
 
-			s.Logger.Info("[xDS] cfg manager watching proxy, pending initial config", "proxyID", proxyID)
-
 			// Now wait for the config so we can check ACL
 			state = statePendingInitialConfig
 		case statePendingInitialConfig:
@@ -378,7 +342,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 
 			// Got config, try to authenticate next.
 			state = stateRunning
-			s.Logger.Info("[xDS] got initial cfgSnap", "proxyID", cfgSnap.ProxyID)
 
 			// Lets actually process the config we just got or we'll mis responding
 			fallthrough
@@ -387,8 +350,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 			if err := checkStreamACLs(cfgSnap); err != nil {
 				return err
 			}
-			s.Logger.Info("[xDS] passed ACL check", "proxyID", cfgSnap.ProxyID)
-
 			// For the first time through the state machine, this is when the
 			// timer is first started.
 			extendAuthTimer()
@@ -405,8 +366,6 @@ func (s *Server) process(stream ADSStream, reqCh <-chan *envoy.DiscoveryRequest)
 			//     to handle
 			for _, typeURL := range []string{ClusterType, EndpointType, RouteType, ListenerType} {
 				handler := handlers[typeURL]
-				s.Logger.Info("[xDS] invoking handler SendIfNew",
-					"typeUrl", req.TypeUrl, "proxyID", cfgSnap.ProxyID)
 				if err := handler.SendIfNew(cfgSnap, configVersion, &nonce); err != nil {
 					return err
 				}
@@ -450,11 +409,9 @@ func (t *xDSType) Recv(req *envoy.DiscoveryRequest, node *envoycore.Node, proxyF
 
 func (t *xDSType) SendIfNew(cfgSnap *proxycfg.ConfigSnapshot, version uint64, nonce *uint64) error {
 	if t.req == nil {
-		fmt.Println("[xDS] nil request")
 		return nil
 	}
 	if t.lastVersion >= version {
-		fmt.Println("[xDS] already sent this version")
 		// Already sent this version
 		return nil
 	}
@@ -467,8 +424,6 @@ func (t *xDSType) SendIfNew(cfgSnap *proxycfg.ConfigSnapshot, version uint64, no
 	if err != nil {
 		return err
 	}
-	fmt.Println("[xDS] Prepared resources:")
-	spew.Dump(resources)
 
 	allowEmpty := t.allowEmptyFn != nil && t.allowEmptyFn(cfgSnap)
 
@@ -479,7 +434,6 @@ func (t *xDSType) SendIfNew(cfgSnap *proxycfg.ConfigSnapshot, version uint64, no
 	// empty LoadAssignment resource for the cluster rather than allowing junky
 	// empty resources.
 	if len(resources) == 0 && !allowEmpty {
-		fmt.Println("[xDS] len(resources) and allowEmpty", len(resources), allowEmpty)
 		// Nothing to send yet
 		return nil
 	}
@@ -495,10 +449,7 @@ func (t *xDSType) SendIfNew(cfgSnap *proxycfg.ConfigSnapshot, version uint64, no
 	if err != nil {
 		return err
 	}
-	fmt.Println("[xDS] Prepared response:")
-	spew.Dump(resp)
 
-	fmt.Println("[xDS] Sending into stream")
 	err = t.stream.Send(resp)
 	if err != nil {
 		return err

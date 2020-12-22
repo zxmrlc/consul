@@ -288,8 +288,6 @@ func (s *state) initWatchesConnectProxy() error {
 	if err != nil {
 		return err
 	}
-	s.logger.Info("[proxycfg] Initialized watches for proxy",
-		"proxyID", s.proxyID.ID)
 
 	// Watch for service check updates
 	err = s.cache.Notify(s.ctx, cachetype.ServiceHTTPChecksName, &cachetype.ServiceHTTPChecksRequest{
@@ -607,15 +605,10 @@ func (s *state) run() {
 	var coalesceTimer *time.Timer
 
 	for {
-		s.logger.Info("state.run looped again", "proxy", s.proxyID)
-
 		select {
 		case <-s.ctx.Done():
-			s.logger.Info("state.run has context canceled", "proxy", s.proxyID)
 			return
 		case u := <-s.ch:
-			s.logger.Info("state.run is servicing a handleUpdate operation", "proxy", s.proxyID)
-
 			if err := s.handleUpdate(u, &snap); err != nil {
 				s.logger.Error("watch error",
 					"id", u.CorrelationID,
@@ -625,8 +618,6 @@ func (s *state) run() {
 			}
 
 		case <-sendCh:
-			s.logger.Info("state.run is servicing a snapshot send operation", "proxy", s.proxyID)
-
 			// Make a deep copy of snap so we don't mutate any of the embedded structs
 			// etc on future updates.
 			snapCopy, err := snap.Clone()
@@ -652,12 +643,7 @@ func (s *state) run() {
 			continue
 
 		case replyCh := <-s.reqCh:
-			s.logger.Info("state.run is servicing a request for current snapshot", "proxy", s.proxyID)
-
-			// NOTE(rb): why might something be blocked entering this body?
 			if !snap.Valid() {
-				s.logger.Info("[proxycfg] Proxy snapshot is not valid",
-					"proxyID", s.proxyID.ID)
 				// Not valid yet just respond with nil and move on to next task.
 				replyCh <- nil
 				continue
@@ -670,13 +656,8 @@ func (s *state) run() {
 					"proxy", s.proxyID,
 					"error", err,
 				)
-				// NOTE(rb): this is probably a bug, but not OUR bug
-				// replyCh <- nil
 				continue
 			}
-
-			s.logger.Info("[proxycfg] Sending a copy of the snapshot to xDS server",
-				"proxyID", snapCopy.ProxyID.ID)
 			replyCh <- snapCopy
 
 			// Skip rest of loop - there is nothing to send since nothing changed on
@@ -684,13 +665,9 @@ func (s *state) run() {
 			continue
 		}
 
-		s.logger.Info("state.run is past the select{} and moving on to snap validation", "proxy", s.proxyID)
-
 		// Check if snap is complete enough to be a valid config to deliver to a
 		// proxy yet.
 		if snap.Valid() {
-			s.logger.Info("[proxycfg] Proxy snapshot is valid, starting a 200ms timer to wait to send updates",
-				"proxyID", s.proxyID.ID)
 			// Don't send it right away, set a short timer that will wait for updates
 			// from any of the other cache values and deliver them all together.
 			if coalesceTimer == nil {
@@ -700,20 +677,12 @@ func (s *state) run() {
 					// loop above.
 					sendCh <- struct{}{}
 				})
-			} else {
-				s.logger.Info("state.run is skipping extending the coalesce timer", "proxy", s.proxyID)
 			}
 		}
 	}
 }
 
 func (s *state) handleUpdate(u cache.UpdateEvent, snap *ConfigSnapshot) error {
-	s.logger.Debug("handleUpdate saw cache event",
-		"correlationID", u.CorrelationID,
-		"kind", s.kind,
-		"error", u.Err,
-	)
-
 	switch s.kind {
 	case structs.ServiceKindConnectProxy:
 		return s.handleUpdateConnectProxy(u, snap)
@@ -740,8 +709,6 @@ func (s *state) handleUpdateConnectProxy(u cache.UpdateEvent, snap *ConfigSnapsh
 			return fmt.Errorf("invalid type for response: %T", u.Result)
 		}
 		snap.Roots = roots
-		s.logger.Info("[proxycfg] Got roots for proxy", "proxyID", s.proxyID.ID, "roots are not nil", roots != nil)
-
 	case u.CorrelationID == intentionsWatchID:
 		resp, ok := u.Result.(*structs.IndexedIntentionMatches)
 		if !ok {
@@ -754,7 +721,6 @@ func (s *state) handleUpdateConnectProxy(u cache.UpdateEvent, snap *ConfigSnapsh
 			snap.ConnectProxy.Intentions = resp.Matches[0]
 		}
 		snap.ConnectProxy.IntentionsSet = true
-		s.logger.Info("[proxycfg] Got intentions for proxy", "proxyID", s.proxyID.ID)
 
 	case strings.HasPrefix(u.CorrelationID, "upstream:"+preparedQueryIDPrefix):
 		resp, ok := u.Result.(*structs.PreparedQueryExecuteResponse)
@@ -789,7 +755,6 @@ func (s *state) handleUpdateUpstreams(u cache.UpdateEvent, snap *ConfigSnapshotU
 			return fmt.Errorf("invalid type for response: %T", u.Result)
 		}
 		snap.Leaf = leaf
-		s.logger.Info("[proxycfg] Got leaf cert for proxy", "proxyID", s.proxyID.ID, "leaf is not nil", leaf != nil)
 
 	case strings.HasPrefix(u.CorrelationID, "discovery-chain:"):
 		resp, ok := u.Result.(*structs.DiscoveryChainResponse)
@@ -1629,15 +1594,9 @@ func (s *state) watchIngressLeafCert(snap *ConfigSnapshot) error {
 func (s *state) CurrentSnapshot() *ConfigSnapshot {
 	// Make a chan for the response to be sent on
 	ch := make(chan *ConfigSnapshot, 1)
-
-	s.logger.Info("state.CurrentSnapshot >>> is attempting to send to reqCh", "proxy", s.proxyID.String())
 	s.reqCh <- ch
-	s.logger.Info("state.CurrentSnapshot --- sent to reqCh waiting for response", "proxy", s.proxyID.String())
-
 	// Wait for the response
-	snap := <-ch
-	s.logger.Info("state.CurrentSnapshot <<< got response", "proxy", s.proxyID.String())
-	return snap
+	return <-ch
 }
 
 // Changed returns whether or not the passed NodeService has had any of the

@@ -637,7 +637,13 @@ func (s *state) run() {
 				)
 				continue
 			}
-			s.snapCh <- *snapCopy // STUCK HERE?
+			select {
+			case s.snapCh <- *snapCopy:
+				// try to send
+			default:
+				// avoid blocking if a snapshot is already buffered
+			}
+
 			// Allow the next change to trigger a send
 			coalesceTimer = nil
 

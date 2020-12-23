@@ -50,10 +50,9 @@ const (
 // connect-proxy service. When a proxy registration is changed, the entire state
 // is discarded and a new one created.
 type state struct {
-	// TODO: un-embedd once refactor is complete
-	stateConfig
-	// TODO: un-embed once refactor is complete
-	serviceInstance
+	logger          hclog.Logger
+	serviceInstance serviceInstance
+	handler         kindHandler
 
 	// cancel is set by Watch and called by Close to stop the goroutine started
 	// in Watch.
@@ -128,34 +127,44 @@ func copyProxyConfig(ns *structs.NodeService) (structs.ConnectProxyConfig, error
 //
 // The returned state needs its required dependencies to be set before Watch
 // can be called.
-func newState(ns *structs.NodeService, token string) (*state, error) {
-	switch ns.Kind {
-	case structs.ServiceKindConnectProxy:
-	case structs.ServiceKindTerminatingGateway:
-	case structs.ServiceKindMeshGateway:
-	case structs.ServiceKindIngressGateway:
-	default:
-		return nil, errors.New("not a connect-proxy, terminating-gateway, mesh-gateway, or ingress-gateway")
-	}
+func newState(ns *structs.NodeService, token string, config stateConfig) (*state, error) {
+	// 10 is fairly arbitrary here but allow for the 3 mandatory and a
+	// reasonable number of upstream watches to all deliver their initial
+	// messages in parallel without blocking the cache.Notify loops. It's not a
+	// huge deal if we do for a short period so we don't need to be more
+	// conservative to handle larger numbers of upstreams correctly but gives
+	// some head room for normal operation to be non-blocking in most typical
+	// cases.
+	ch := make(chan cache.UpdateEvent, 10)
 
 	s, err := newServiceInstanceFromNodeService(ns, token)
 	if err != nil {
 		return nil, err
 	}
 
-	return &state{
-		serviceInstance: s,
+	var handler kindHandler
+	switch ns.Kind {
+	case structs.ServiceKindConnectProxy:
+		handler = &handlerConnectProxy{stateConfig: config, serviceInstance: s, ch: ch}
+	case structs.ServiceKindTerminatingGateway:
+		config.logger = config.logger.Named(logging.TerminatingGateway)
+		handler = &handlerTerminatingGateway{stateConfig: config, serviceInstance: s, ch: ch}
+	case structs.ServiceKindMeshGateway:
+		config.logger = config.logger.Named(logging.MeshGateway)
+		handler = &handlerMeshGateway{stateConfig: config, serviceInstance: s, ch: ch}
+	case structs.ServiceKindIngressGateway:
+		handler = &handlerIngressGateway{stateConfig: config, serviceInstance: s, ch: ch}
+	default:
+		return nil, errors.New("not a connect-proxy, terminating-gateway, mesh-gateway, or ingress-gateway")
+	}
 
-		// 10 is fairly arbitrary here but allow for the 3 mandatory and a
-		// reasonable number of upstream watches to all deliver their initial
-		// messages in parallel without blocking the cache.Notify loops. It's not a
-		// huge deal if we do for a short period so we don't need to be more
-		// conservative to handle larger numbers of upstreams correctly but gives
-		// some head room for normal operation to be non-blocking in most typical
-		// cases.
-		ch:     make(chan cache.UpdateEvent, 10),
-		snapCh: make(chan ConfigSnapshot, 1),
-		reqCh:  make(chan chan *ConfigSnapshot, 1),
+	return &state{
+		logger:          config.logger.With("proxy", s.proxyID, "kind", s.kind),
+		serviceInstance: s,
+		handler:         handler,
+		ch:              ch,
+		snapCh:          make(chan ConfigSnapshot, 1),
+		reqCh:           make(chan chan *ConfigSnapshot, 1),
 	}, nil
 }
 
@@ -188,6 +197,11 @@ func newServiceInstanceFromNodeService(ns *structs.NodeService, token string) (s
 	}, nil
 }
 
+type kindHandler interface {
+	initialize(ctx context.Context) (ConfigSnapshot, error)
+	handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error
+}
+
 // Watch initialized watches on all necessary cache data for the current proxy
 // registration state and returns a chan to observe updates to the
 // ConfigSnapshot that contains all necessary config state. The chan is closed
@@ -196,13 +210,13 @@ func (s *state) Watch() (<-chan ConfigSnapshot, error) {
 	var ctx context.Context
 	ctx, s.cancel = context.WithCancel(context.Background())
 
-	err := s.initWatches(ctx)
+	snap, err := s.handler.initialize(ctx)
 	if err != nil {
 		s.cancel()
 		return nil, err
 	}
 
-	go s.run(ctx)
+	go s.run(ctx, &snap)
 
 	return s.snapCh, nil
 }
@@ -215,23 +229,21 @@ func (s *state) Close() error {
 	return nil
 }
 
-// initWatches sets up the watches needed for the particular service
-func (s *state) initWatches(ctx context.Context) error {
-	switch s.kind {
-	case structs.ServiceKindConnectProxy:
-		return s.initWatchesConnectProxy(ctx)
-	case structs.ServiceKindTerminatingGateway:
-		return s.initWatchesTerminatingGateway(ctx)
-	case structs.ServiceKindMeshGateway:
-		return s.initWatchesMeshGateway(ctx)
-	case structs.ServiceKindIngressGateway:
-		return s.initWatchesIngressGateway(ctx)
-	default:
-		return fmt.Errorf("Unsupported service kind")
-	}
+type handler struct {
+	stateConfig     // TODO: un-embed
+	serviceInstance // TODO: un-embed
+	ch              chan cache.UpdateEvent
 }
 
-func (s *state) watchMeshGateway(ctx context.Context, dc string, upstreamID string) error {
+type handlerMeshGateway handler
+
+type handlerTerminatingGateway handler
+
+type handlerConnectProxy handler
+
+type handlerIngressGateway handler
+
+func (s *handlerUpstreams) watchMeshGateway(ctx context.Context, dc string, upstreamID string) error {
 	return s.cache.Notify(ctx, cachetype.InternalServiceDumpName, &structs.ServiceDumpRequest{
 		Datacenter:     dc,
 		QueryOptions:   structs.QueryOptions{Token: s.token},
@@ -242,29 +254,29 @@ func (s *state) watchMeshGateway(ctx context.Context, dc string, upstreamID stri
 	}, "mesh-gateway:"+dc+":"+upstreamID, s.ch)
 }
 
-func (s *state) watchConnectProxyService(ctx context.Context, correlationId string, service string, dc string, filter string, entMeta *structs.EnterpriseMeta) error {
-	var finalMeta structs.EnterpriseMeta
-	finalMeta.Merge(entMeta)
+type handlerUpstreams handler
 
-	return s.cache.Notify(ctx, cachetype.HealthServicesName, &structs.ServiceSpecificRequest{
-		Datacenter: dc,
+func (s *handlerUpstreams) watchConnectProxyService(ctx context.Context, correlationId string, target *structs.DiscoveryTarget) error {
+	return s.stateConfig.cache.Notify(ctx, cachetype.HealthServicesName, &structs.ServiceSpecificRequest{
+		Datacenter: target.Datacenter,
 		QueryOptions: structs.QueryOptions{
-			Token:  s.token,
-			Filter: filter,
+			Token:  s.serviceInstance.token,
+			Filter: target.Subset.Filter,
 		},
-		ServiceName: service,
+		ServiceName: target.Service,
 		Connect:     true,
 		// Note that Identifier doesn't type-prefix for service any more as it's
 		// the default and makes metrics and other things much cleaner. It's
 		// simpler for us if we have the type to make things unambiguous.
-		Source:         *s.source,
-		EnterpriseMeta: finalMeta,
+		Source:         *s.stateConfig.source,
+		EnterpriseMeta: *target.GetEnterpriseMetadata(),
 	}, correlationId, s.ch)
 }
 
 // initWatchesConnectProxy sets up the watches needed based on current proxy registration
 // state.
-func (s *state) initWatchesConnectProxy(ctx context.Context) error {
+func (s *handlerConnectProxy) initialize(ctx context.Context) (ConfigSnapshot, error) {
+	var snap ConfigSnapshot
 	// Watch for root changes
 	err := s.cache.Notify(ctx, cachetype.ConnectCARootName, &structs.DCSpecificRequest{
 		Datacenter:   s.source.Datacenter,
@@ -272,7 +284,7 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 		Source:       *s.source,
 	}, rootsWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch the leaf cert
@@ -283,7 +295,7 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, leafWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch for intention updates
@@ -301,7 +313,7 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 		},
 	}, intentionsWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch for service check updates
@@ -310,7 +322,7 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, svcChecksWatchIDPrefix+structs.ServiceIDString(s.proxyCfg.DestinationServiceID, &s.proxyID.EnterpriseMeta), s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// default the namespace to the namespace of this proxy service
@@ -349,7 +361,7 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 				Source:        *s.source,
 			}, "upstream:"+u.Identifier(), s.ch)
 			if err != nil {
-				return err
+				return snap, err
 			}
 
 		case structs.UpstreamDestTypeService:
@@ -367,17 +379,26 @@ func (s *state) initWatchesConnectProxy(ctx context.Context) error {
 				OverrideConnectTimeout: cfg.ConnectTimeout(),
 			}, "discovery-chain:"+u.Identifier(), s.ch)
 			if err != nil {
-				return err
+				return snap, err
 			}
 
 		default:
-			return fmt.Errorf("unknown upstream type: %q", u.DestinationType)
+			return snap, fmt.Errorf("unknown upstream type: %q", u.DestinationType)
 		}
 	}
-	return nil
+
+	snap = newConfigSnapshotFromServiceInstance(s.serviceInstance, s.stateConfig)
+	snap.ConnectProxy.DiscoveryChain = make(map[string]*structs.CompiledDiscoveryChain)
+	snap.ConnectProxy.WatchedUpstreams = make(map[string]map[string]context.CancelFunc)
+	snap.ConnectProxy.WatchedUpstreamEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
+	snap.ConnectProxy.WatchedGateways = make(map[string]map[string]context.CancelFunc)
+	snap.ConnectProxy.WatchedGatewayEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
+	snap.ConnectProxy.WatchedServiceChecks = make(map[structs.ServiceID][]structs.CheckType)
+	snap.ConnectProxy.PreparedQueryEndpoints = make(map[string]structs.CheckServiceNodes)
+	return snap, nil
 }
 
-// reducedProxyConfig represents the basic opaque config values that are now
+// reducedUpstreamConfig represents the basic opaque config values that are now
 // managed with the discovery chain but for backwards compatibility reasons
 // should still affect how the proxy is configured.
 //
@@ -398,7 +419,8 @@ func parseReducedUpstreamConfig(m map[string]interface{}) (reducedUpstreamConfig
 }
 
 // initWatchesTerminatingGateway sets up the initial watches needed based on the terminating-gateway registration
-func (s *state) initWatchesTerminatingGateway(ctx context.Context) error {
+func (s *handlerTerminatingGateway) initialize(ctx context.Context) (ConfigSnapshot, error) {
+	var snap ConfigSnapshot
 	// Watch for root changes
 	err := s.cache.Notify(ctx, cachetype.ConnectCARootName, &structs.DCSpecificRequest{
 		Datacenter:   s.source.Datacenter,
@@ -406,9 +428,8 @@ func (s *state) initWatchesTerminatingGateway(ctx context.Context) error {
 		Source:       *s.source,
 	}, rootsWatchID, s.ch)
 	if err != nil {
-		s.logger.Named(logging.TerminatingGateway).
-			Error("failed to register watch for root changes", "error", err)
-		return err
+		s.logger.Error("failed to register watch for root changes", "error", err)
+		return snap, err
 	}
 
 	// Watch for the terminating-gateway's linked services
@@ -419,16 +440,30 @@ func (s *state) initWatchesTerminatingGateway(ctx context.Context) error {
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, gatewayServicesWatchID, s.ch)
 	if err != nil {
-		s.logger.Named(logging.TerminatingGateway).
-			Error("failed to register watch for linked services", "error", err)
-		return err
+		s.logger.Error("failed to register watch for linked services", "error", err)
+		return snap, err
 	}
 
-	return nil
+	snap = newConfigSnapshotFromServiceInstance(s.serviceInstance, s.stateConfig)
+	snap.TerminatingGateway.WatchedServices = make(map[structs.ServiceName]context.CancelFunc)
+	snap.TerminatingGateway.WatchedIntentions = make(map[structs.ServiceName]context.CancelFunc)
+	snap.TerminatingGateway.Intentions = make(map[structs.ServiceName]structs.Intentions)
+	snap.TerminatingGateway.WatchedLeaves = make(map[structs.ServiceName]context.CancelFunc)
+	snap.TerminatingGateway.ServiceLeaves = make(map[structs.ServiceName]*structs.IssuedCert)
+	snap.TerminatingGateway.WatchedConfigs = make(map[structs.ServiceName]context.CancelFunc)
+	snap.TerminatingGateway.ServiceConfigs = make(map[structs.ServiceName]*structs.ServiceConfigResponse)
+	snap.TerminatingGateway.WatchedResolvers = make(map[structs.ServiceName]context.CancelFunc)
+	snap.TerminatingGateway.ServiceResolvers = make(map[structs.ServiceName]*structs.ServiceResolverConfigEntry)
+	snap.TerminatingGateway.ServiceResolversSet = make(map[structs.ServiceName]bool)
+	snap.TerminatingGateway.ServiceGroups = make(map[structs.ServiceName]structs.CheckServiceNodes)
+	snap.TerminatingGateway.GatewayServices = make(map[structs.ServiceName]structs.GatewayService)
+	snap.TerminatingGateway.HostnameServices = make(map[structs.ServiceName]structs.CheckServiceNodes)
+	return snap, nil
 }
 
 // initWatchesMeshGateway sets up the watches needed based on the current mesh gateway registration
-func (s *state) initWatchesMeshGateway(ctx context.Context) error {
+func (s *handlerMeshGateway) initialize(ctx context.Context) (ConfigSnapshot, error) {
+	var snap ConfigSnapshot
 	// Watch for root changes
 	err := s.cache.Notify(ctx, cachetype.ConnectCARootName, &structs.DCSpecificRequest{
 		Datacenter:   s.source.Datacenter,
@@ -436,7 +471,7 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 		Source:       *s.source,
 	}, rootsWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch for all services
@@ -448,7 +483,7 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 	}, serviceListWatchID, s.ch)
 
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	if s.meta[structs.MetaWANFederationKey] == "1" {
@@ -461,7 +496,7 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 			Source:       *s.source,
 		}, federationStateListGatewaysWatchID, s.ch)
 		if err != nil {
-			return err
+			return snap, err
 		}
 
 		err = s.cache.Notify(ctx, cachetype.HealthServicesName, &structs.ServiceSpecificRequest{
@@ -470,7 +505,7 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 			ServiceName:  structs.ConsulServiceName,
 		}, consulServerListWatchID, s.ch)
 		if err != nil {
-			return err
+			return snap, err
 		}
 	}
 
@@ -483,7 +518,7 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 		QueryOptions: structs.QueryOptions{Token: s.token, MaxAge: 30 * time.Second},
 	}, datacentersWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Once we start getting notified about the datacenters we will setup watches on the
@@ -497,17 +532,26 @@ func (s *state) initWatchesMeshGateway(ctx context.Context) error {
 		Kind:           structs.ServiceResolver,
 		EnterpriseMeta: *structs.WildcardEnterpriseMeta(),
 	}, serviceResolversWatchID, s.ch)
-
 	if err != nil {
 		s.logger.Named(logging.MeshGateway).
 			Error("failed to register watch for service-resolver config entries", "error", err)
-		return err
+		return snap, err
 	}
 
-	return err
+	snap = newConfigSnapshotFromServiceInstance(s.serviceInstance, s.stateConfig)
+	snap.MeshGateway.WatchedServices = make(map[structs.ServiceName]context.CancelFunc)
+	snap.MeshGateway.WatchedDatacenters = make(map[string]context.CancelFunc)
+	snap.MeshGateway.ServiceGroups = make(map[structs.ServiceName]structs.CheckServiceNodes)
+	snap.MeshGateway.GatewayGroups = make(map[string]structs.CheckServiceNodes)
+	snap.MeshGateway.ServiceResolvers = make(map[structs.ServiceName]*structs.ServiceResolverConfigEntry)
+	snap.MeshGateway.HostnameDatacenters = make(map[string]structs.CheckServiceNodes)
+	// there is no need to initialize the map of service resolvers as we
+	// fully rebuild it every time we get updates
+	return snap, err
 }
 
-func (s *state) initWatchesIngressGateway(ctx context.Context) error {
+func (s *handlerIngressGateway) initialize(ctx context.Context) (ConfigSnapshot, error) {
+	var snap ConfigSnapshot
 	// Watch for root changes
 	err := s.cache.Notify(ctx, cachetype.ConnectCARootName, &structs.DCSpecificRequest{
 		Datacenter:   s.source.Datacenter,
@@ -515,7 +559,7 @@ func (s *state) initWatchesIngressGateway(ctx context.Context) error {
 		Source:       *s.source,
 	}, rootsWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch this ingress gateway's config entry
@@ -527,7 +571,7 @@ func (s *state) initWatchesIngressGateway(ctx context.Context) error {
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, gatewayConfigWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
 	// Watch the ingress-gateway's list of upstreams
@@ -538,14 +582,22 @@ func (s *state) initWatchesIngressGateway(ctx context.Context) error {
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, gatewayServicesWatchID, s.ch)
 	if err != nil {
-		return err
+		return snap, err
 	}
 
-	return nil
+	snap = newConfigSnapshotFromServiceInstance(s.serviceInstance, s.stateConfig)
+	snap.IngressGateway.WatchedDiscoveryChains = make(map[string]context.CancelFunc)
+	snap.IngressGateway.DiscoveryChain = make(map[string]*structs.CompiledDiscoveryChain)
+	snap.IngressGateway.WatchedUpstreams = make(map[string]map[string]context.CancelFunc)
+	snap.IngressGateway.WatchedUpstreamEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
+	snap.IngressGateway.WatchedGateways = make(map[string]map[string]context.CancelFunc)
+	snap.IngressGateway.WatchedGatewayEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
+	return snap, nil
 }
 
-func (s *state) initialConfigSnapshot() ConfigSnapshot {
-	snap := ConfigSnapshot{
+func newConfigSnapshotFromServiceInstance(s serviceInstance, config stateConfig) ConfigSnapshot {
+	// TODO: use serviceInstance type in ConfigSnapshot
+	return ConfigSnapshot{
 		Kind:                  s.kind,
 		Service:               s.service,
 		ProxyID:               s.proxyID,
@@ -554,63 +606,18 @@ func (s *state) initialConfigSnapshot() ConfigSnapshot {
 		ServiceMeta:           s.meta,
 		TaggedAddresses:       s.taggedAddresses,
 		Proxy:                 s.proxyCfg,
-		Datacenter:            s.source.Datacenter,
-		ServerSNIFn:           s.serverSNIFn,
-		IntentionDefaultAllow: s.intentionDefaultAllow,
+		Datacenter:            config.source.Datacenter,
+		ServerSNIFn:           config.serverSNIFn,
+		IntentionDefaultAllow: config.intentionDefaultAllow,
 	}
-
-	switch s.kind {
-	case structs.ServiceKindConnectProxy:
-		snap.ConnectProxy.DiscoveryChain = make(map[string]*structs.CompiledDiscoveryChain)
-		snap.ConnectProxy.WatchedUpstreams = make(map[string]map[string]context.CancelFunc)
-		snap.ConnectProxy.WatchedUpstreamEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
-		snap.ConnectProxy.WatchedGateways = make(map[string]map[string]context.CancelFunc)
-		snap.ConnectProxy.WatchedGatewayEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
-		snap.ConnectProxy.WatchedServiceChecks = make(map[structs.ServiceID][]structs.CheckType)
-		snap.ConnectProxy.PreparedQueryEndpoints = make(map[string]structs.CheckServiceNodes)
-	case structs.ServiceKindTerminatingGateway:
-		snap.TerminatingGateway.WatchedServices = make(map[structs.ServiceName]context.CancelFunc)
-		snap.TerminatingGateway.WatchedIntentions = make(map[structs.ServiceName]context.CancelFunc)
-		snap.TerminatingGateway.Intentions = make(map[structs.ServiceName]structs.Intentions)
-		snap.TerminatingGateway.WatchedLeaves = make(map[structs.ServiceName]context.CancelFunc)
-		snap.TerminatingGateway.ServiceLeaves = make(map[structs.ServiceName]*structs.IssuedCert)
-		snap.TerminatingGateway.WatchedConfigs = make(map[structs.ServiceName]context.CancelFunc)
-		snap.TerminatingGateway.ServiceConfigs = make(map[structs.ServiceName]*structs.ServiceConfigResponse)
-		snap.TerminatingGateway.WatchedResolvers = make(map[structs.ServiceName]context.CancelFunc)
-		snap.TerminatingGateway.ServiceResolvers = make(map[structs.ServiceName]*structs.ServiceResolverConfigEntry)
-		snap.TerminatingGateway.ServiceResolversSet = make(map[structs.ServiceName]bool)
-		snap.TerminatingGateway.ServiceGroups = make(map[structs.ServiceName]structs.CheckServiceNodes)
-		snap.TerminatingGateway.GatewayServices = make(map[structs.ServiceName]structs.GatewayService)
-		snap.TerminatingGateway.HostnameServices = make(map[structs.ServiceName]structs.CheckServiceNodes)
-	case structs.ServiceKindMeshGateway:
-		snap.MeshGateway.WatchedServices = make(map[structs.ServiceName]context.CancelFunc)
-		snap.MeshGateway.WatchedDatacenters = make(map[string]context.CancelFunc)
-		snap.MeshGateway.ServiceGroups = make(map[structs.ServiceName]structs.CheckServiceNodes)
-		snap.MeshGateway.GatewayGroups = make(map[string]structs.CheckServiceNodes)
-		snap.MeshGateway.ServiceResolvers = make(map[structs.ServiceName]*structs.ServiceResolverConfigEntry)
-		snap.MeshGateway.HostnameDatacenters = make(map[string]structs.CheckServiceNodes)
-		// there is no need to initialize the map of service resolvers as we
-		// fully rebuild it every time we get updates
-	case structs.ServiceKindIngressGateway:
-		snap.IngressGateway.WatchedDiscoveryChains = make(map[string]context.CancelFunc)
-		snap.IngressGateway.DiscoveryChain = make(map[string]*structs.CompiledDiscoveryChain)
-		snap.IngressGateway.WatchedUpstreams = make(map[string]map[string]context.CancelFunc)
-		snap.IngressGateway.WatchedUpstreamEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
-		snap.IngressGateway.WatchedGateways = make(map[string]map[string]context.CancelFunc)
-		snap.IngressGateway.WatchedGatewayEndpoints = make(map[string]map[string]structs.CheckServiceNodes)
-	}
-
-	return snap
 }
 
-func (s *state) run(ctx context.Context) {
+func (s *state) run(ctx context.Context, snap *ConfigSnapshot) {
 	// Close the channel we return from Watch when we stop so consumers can stop
 	// watching and clean up their goroutines. It's important we do this here and
 	// not in Close since this routine sends on this chan and so might panic if it
 	// gets closed from another goroutine.
 	defer close(s.snapCh)
-
-	snap := s.initialConfigSnapshot()
 
 	// This turns out to be really fiddly/painful by just using time.Timer.C
 	// directly in the code below since you can't detect when a timer is stopped
@@ -624,11 +631,8 @@ func (s *state) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case u := <-s.ch:
-			if err := s.handleUpdate(ctx, u, &snap); err != nil {
-				s.logger.Error("watch error",
-					"id", u.CorrelationID,
-					"error", err,
-				)
+			if err := s.handler.handleUpdate(ctx, u, snap); err != nil {
+				s.logger.Error("watch error", "id", u.CorrelationID, "error", err)
 				continue
 			}
 
@@ -637,10 +641,7 @@ func (s *state) run(ctx context.Context) {
 			// etc on future updates.
 			snapCopy, err := snap.Clone()
 			if err != nil {
-				s.logger.Error("Failed to copy config snapshot for proxy",
-					"proxy", s.proxyID,
-					"error", err,
-				)
+				s.logger.Error("Failed to copy config snapshot for proxy", "error", err)
 				continue
 			}
 			s.snapCh <- *snapCopy
@@ -661,10 +662,7 @@ func (s *state) run(ctx context.Context) {
 			// etc on future updates.
 			snapCopy, err := snap.Clone()
 			if err != nil {
-				s.logger.Error("Failed to copy config snapshot for proxy",
-					"proxy", s.proxyID,
-					"error", err,
-				)
+				s.logger.Error("Failed to copy config snapshot for proxy", "error", err)
 				continue
 			}
 			replyCh <- snapCopy
@@ -691,22 +689,7 @@ func (s *state) run(ctx context.Context) {
 	}
 }
 
-func (s *state) handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
-	switch s.kind {
-	case structs.ServiceKindConnectProxy:
-		return s.handleUpdateConnectProxy(ctx, u, snap)
-	case structs.ServiceKindTerminatingGateway:
-		return s.handleUpdateTerminatingGateway(ctx, u, snap)
-	case structs.ServiceKindMeshGateway:
-		return s.handleUpdateMeshGateway(ctx, u, snap)
-	case structs.ServiceKindIngressGateway:
-		return s.handleUpdateIngressGateway(ctx, u, snap)
-	default:
-		return fmt.Errorf("Unsupported service kind")
-	}
-}
-
-func (s *state) handleUpdateConnectProxy(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
+func (s *handlerConnectProxy) handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
 	if u.Err != nil {
 		return fmt.Errorf("error filling agent cache: %v", u.Err)
 	}
@@ -747,12 +730,12 @@ func (s *state) handleUpdateConnectProxy(ctx context.Context, u cache.UpdateEven
 		svcID := structs.ServiceIDFromString(strings.TrimPrefix(u.CorrelationID, svcChecksWatchIDPrefix))
 		snap.ConnectProxy.WatchedServiceChecks[svcID] = resp
 	default:
-		return s.handleUpdateUpstreams(ctx, u, &snap.ConnectProxy.ConfigSnapshotUpstreams)
+		return (*handlerUpstreams)(s).handleUpdateUpstreams(ctx, u, &snap.ConnectProxy.ConfigSnapshotUpstreams)
 	}
 	return nil
 }
 
-func (s *state) handleUpdateUpstreams(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshotUpstreams) error {
+func (s *handlerUpstreams) handleUpdateUpstreams(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshotUpstreams) error {
 	if u.Err != nil {
 		return fmt.Errorf("error filling agent cache: %v", u.Err)
 	}
@@ -821,7 +804,7 @@ func removeColonPrefix(s string) (string, string, bool) {
 	return s[0:idx], s[idx+1:], true
 }
 
-func (s *state) resetWatchesFromChain(
+func (s *handlerUpstreams) resetWatchesFromChain(
 	ctx context.Context,
 	id string,
 	chain *structs.CompiledDiscoveryChain,
@@ -881,14 +864,7 @@ func (s *state) resetWatchesFromChain(
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		err := s.watchConnectProxyService(
-			ctx,
-			"upstream-target:"+target.ID+":"+id,
-			target.Service,
-			target.Datacenter,
-			target.Subset.Filter,
-			target.GetEnterpriseMetadata(),
-		)
+		err := s.watchConnectProxyService(ctx, "upstream-target:"+target.ID+":"+id, target)
 		if err != nil {
 			cancel()
 			return err
@@ -935,11 +911,11 @@ func (s *state) resetWatchesFromChain(
 	return nil
 }
 
-func (s *state) handleUpdateTerminatingGateway(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
+func (s *handlerTerminatingGateway) handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
 	if u.Err != nil {
 		return fmt.Errorf("error filling agent cache: %v", u.Err)
 	}
-	logger := s.logger.Named(logging.TerminatingGateway)
+	logger := s.logger
 
 	switch {
 	case u.CorrelationID == rootsWatchID:
@@ -1163,7 +1139,7 @@ func (s *state) handleUpdateTerminatingGateway(ctx context.Context, u cache.Upda
 		if len(resp.Nodes) > 0 {
 			snap.TerminatingGateway.ServiceGroups[sn] = resp.Nodes
 			snap.TerminatingGateway.HostnameServices[sn] = hostnameEndpoints(
-				s.logger.Named(logging.TerminatingGateway), snap.Datacenter, resp.Nodes)
+				s.logger, snap.Datacenter, resp.Nodes)
 		}
 
 	// Store leaf cert for watched service
@@ -1221,7 +1197,7 @@ func (s *state) handleUpdateTerminatingGateway(ctx context.Context, u cache.Upda
 	return nil
 }
 
-func (s *state) handleUpdateMeshGateway(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
+func (s *handlerMeshGateway) handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
 	if u.Err != nil {
 		return fmt.Errorf("error filling agent cache: %v", u.Err)
 	}
@@ -1424,7 +1400,7 @@ func (s *state) handleUpdateMeshGateway(ctx context.Context, u cache.UpdateEvent
 	return nil
 }
 
-func (s *state) handleUpdateIngressGateway(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
+func (s *handlerIngressGateway) handleUpdate(ctx context.Context, u cache.UpdateEvent, snap *ConfigSnapshot) error {
 	if u.Err != nil {
 		return fmt.Errorf("error filling agent cache: %v", u.Err)
 	}
@@ -1494,7 +1470,7 @@ func (s *state) handleUpdateIngressGateway(ctx context.Context, u cache.UpdateEv
 		}
 
 	default:
-		return s.handleUpdateUpstreams(ctx, u, &snap.IngressGateway.ConfigSnapshotUpstreams)
+		return (*handlerUpstreams)(s).handleUpdateUpstreams(ctx, u, &snap.IngressGateway.ConfigSnapshotUpstreams)
 	}
 
 	return nil
@@ -1516,7 +1492,7 @@ func makeUpstream(g *structs.GatewayService) structs.Upstream {
 	return upstream
 }
 
-func (s *state) watchIngressDiscoveryChain(ctx context.Context, snap *ConfigSnapshot, u structs.Upstream) error {
+func (s *handlerIngressGateway) watchIngressDiscoveryChain(ctx context.Context, snap *ConfigSnapshot, u structs.Upstream) error {
 	if _, ok := snap.IngressGateway.WatchedDiscoveryChains[u.Identifier()]; ok {
 		return nil
 	}
@@ -1538,7 +1514,7 @@ func (s *state) watchIngressDiscoveryChain(ctx context.Context, snap *ConfigSnap
 	return nil
 }
 
-func (s *state) generateIngressDNSSANs(snap *ConfigSnapshot) []string {
+func (s *handlerIngressGateway) generateIngressDNSSANs(snap *ConfigSnapshot) []string {
 	// Update our leaf cert watch with wildcard entries for our DNS domains as well as any
 	// configured custom hostnames from the service.
 	if !snap.IngressGateway.TLSEnabled {
@@ -1575,7 +1551,7 @@ func (s *state) generateIngressDNSSANs(snap *ConfigSnapshot) []string {
 	return dnsNames
 }
 
-func (s *state) watchIngressLeafCert(ctx context.Context, snap *ConfigSnapshot) error {
+func (s *handlerIngressGateway) watchIngressLeafCert(ctx context.Context, snap *ConfigSnapshot) error {
 	if !snap.IngressGateway.TLSSet || !snap.IngressGateway.HostsSet {
 		return nil
 	}
@@ -1624,12 +1600,13 @@ func (s *state) Changed(ns *structs.NodeService, token string) bool {
 		s.logger.Warn("Failed to parse proxy config and will treat the new service as unchanged")
 	}
 
-	return ns.Kind != s.kind ||
-		s.proxyID != ns.CompoundServiceID() ||
-		s.address != ns.Address ||
-		s.port != ns.Port ||
-		!reflect.DeepEqual(s.proxyCfg, proxyCfg) ||
-		s.token != token
+	i := s.serviceInstance
+	return ns.Kind != i.kind ||
+		i.proxyID != ns.CompoundServiceID() ||
+		i.address != ns.Address ||
+		i.port != ns.Port ||
+		!reflect.DeepEqual(i.proxyCfg, proxyCfg) ||
+		i.token != token
 }
 
 // hostnameEndpoints returns all CheckServiceNodes that have hostnames instead of IPs as the address.

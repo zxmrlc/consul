@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/hashicorp/consul/agent/cache"
@@ -112,7 +113,7 @@ func TestStateChanged(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require := require.New(t)
-			state, err := newState(tt.ns, tt.token)
+			state, err := newState(tt.ns, tt.token, stateConfig{logger: hclog.New(nil)})
 			require.NoError(err)
 			otherNS, otherToken := tt.mutate(*tt.ns, tt.token)
 			require.Equal(tt.want, state.Changed(otherNS, otherToken))
@@ -1510,38 +1511,30 @@ func TestState_WatchesAndUpdates(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			state, err := newState(&tc.ns, "")
+			cn := newTestCacheNotifier()
+			state, err := newState(&tc.ns, "", stateConfig{
+				logger: testutil.Logger(t),
+				cache:  cn,
+				source: &structs.QuerySource{
+					Datacenter: tc.sourceDC,
+				},
+				dnsConfig: DNSConfig{
+					Domain:    "consul.",
+					AltDomain: "alt.consul.",
+				},
+			})
 
 			// verify building the initial state worked
 			require.NoError(t, err)
 			require.NotNil(t, state)
 
-			// setup the test logger to use the t.Log
-			state.logger = testutil.Logger(t)
-
-			// setup a new testing cache notifier
-			cn := newTestCacheNotifier()
-			state.cache = cn
-
-			// setup the local datacenter information
-			state.source = &structs.QuerySource{
-				Datacenter: tc.sourceDC,
-			}
-
-			state.dnsConfig = DNSConfig{
-				Domain:    "consul.",
-				AltDomain: "alt.consul.",
-			}
-
-			// setup the ctx as initWatches expects this to be there
+			// setup the ctx as initialize expects this to be there
 			var ctx context.Context
 			ctx, state.cancel = context.WithCancel(context.Background())
 
 			// ensure the initial watch setup did not error
-			require.NoError(t, state.initWatches(ctx))
-
-			// get the initial configuration snapshot
-			snap := state.initialConfigSnapshot()
+			snap, err := state.handler.initialize(ctx)
+			require.NoError(t, err)
 
 			//--------------------------------------------------------------------
 			//
@@ -1568,7 +1561,7 @@ func TestState_WatchesAndUpdates(t *testing.T) {
 					// therefore we just tell it about the updates
 					for eveIdx, event := range stage.events {
 						require.True(t, t.Run(fmt.Sprintf("update-%d", eveIdx), func(t *testing.T) {
-							require.NoError(t, state.handleUpdate(ctx, event, &snap))
+							require.NoError(t, state.handler.handleUpdate(ctx, event, &snap))
 						}))
 					}
 

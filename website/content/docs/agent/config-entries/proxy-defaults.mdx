@@ -10,6 +10,9 @@ description: >-
 
 # Proxy Defaults
 
+-> **v1.8.4+:** On Kubernetes, the `ProxyDefaults` custom resource is supported in Consul versions 1.8.4+.<br />
+**v1.5.0+:** On other platforms, this config entry is supported in Consul versions 1.5.0+.
+
 The `proxy-defaults` config entry kind (`ProxyDefaults` on Kubernetes) allows for configuring global config
 defaults across all services for Connect proxy configuration. Currently, only
 one global entry is supported.
@@ -34,12 +37,15 @@ Config {
 </Tab>
 <Tab heading="HCL (Consul Enterprise)">
 
-Set the default protocol for all sidecar proxies in the default namespace:
+Set the default protocol for all sidecar proxies.
+
+**NOTE:** The `proxy-defaults` config entry can only be created in the `default`
+namespace and it will configure proxies in **all** namespaces.
 
 ```hcl
 Kind      = "proxy-defaults"
 Name      = "global"
-Namespace = "default"
+Namespace = "default" # Can only be set to "default".
 Config {
   protocol = "http"
 }
@@ -47,6 +53,21 @@ Config {
 
 </Tab>
 <Tab heading="Kubernetes YAML">
+
+Set the default protocol for all sidecar proxies:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ProxyDefaults
+metadata:
+  name: global
+spec:
+  config:
+    protocol: http
+```
+
+</Tab>
+<Tab heading="Kubernetes YAML (Consul Enterprise)">
 
 Set the default protocol for all sidecar proxies:
 
@@ -100,111 +121,113 @@ spec:
 
 ## Available Fields
 
-<ConfigEntrySpec
-  spec={[
+<ConfigEntryReference
+  keys={[
     {
-      key: 'apiVersion',
+      name: 'apiVersion',
       description: 'Must be set to `consul.hashicorp.com/v1alpha1`',
       hcl: false,
     },
     {
-      key: 'Kind',
-      description: 'Must be set to `proxy-defaults`',
-      kubeDescription: 'Must be set to `ProxyDefaults`',
+      name: 'Kind',
+      description: {
+        hcl: 'Must be set to `proxy-defaults`',
+        yaml: 'Must be set to `ProxyDefaults`',
+      },
     },
     {
-      key: 'Name',
+      name: 'Name',
       description: 'Must be set to `global`',
       yaml: false,
     },
     {
-      key: 'Namespace',
+      name: 'Namespace',
       type: `string: "default"`,
       enterprise: true,
       description: 'Specifies the namespace the config entry will apply to.',
       yaml: false,
     },
     {
-      key: 'Meta',
+      name: 'Meta',
       type: 'map<string|string>: nil',
       description:
         'Specifies arbitrary KV metadata pairs. Added in Consul 1.8.4.',
       yaml: false,
     },
     {
-      key: 'metadata',
-      children: [{ key: 'name', description: 'Must be set to `global`' }],
+      name: 'metadata',
+      children: [{ name: 'name', description: 'Must be set to `global`' }],
       hcl: false,
     },
     {
-      key: 'Config',
+      name: 'Config',
       type: 'map[string]arbitrary',
       description: `An arbitrary map of configuration values used by Connect proxies.
     The available configurations depend on the Connect proxy you use.
      Any values that your proxy allows can be configured globally here. To explore these options please see the documentation for your chosen proxy.
-     <ul><li><a href="/docs/connect/proxies/envoy#bootstrap-configuration">Envoy</a></li>
-     <li><a href="/docs/connect/proxies/built-in">Consul's built-in proxy</a></li></ul>`,
+     <ul><li>[Envoy](/docs/connect/proxies/envoy#bootstrap-configuration)</li>
+     <li>[Consul's built-in proxy](/docs/connect/proxies/built-in)</li></ul>`,
     },
     {
-      key: 'MeshGateway',
+      name: 'MeshGateway',
       type: 'MeshGatewayConfig: <optional>',
       description: `Controls the default
-      <a href="/docs/connect/mesh-gateway#connect-proxy-configuration">mesh gateway configuration</a>
+      [mesh gateway configuration](/docs/connect/mesh-gateway#connect-proxy-configuration)
       for all proxies. Added in v1.6.0.`,
       children: [
         {
-          key: 'Mode',
+          name: 'Mode',
           type: 'string: ""',
           description: 'One of `none`, `local`, or `remote`.',
         },
       ],
     },
     {
-      key: 'Expose',
+      name: 'Expose',
       type: 'ExposeConfig: <optional>',
       description: `Controls the default
-                      <a href="/docs/connect/registration/service-registration#expose-paths-configuration-reference">expose path configuration</a>
+                      [expose path configuration](/docs/connect/registration/service-registration#expose-paths-configuration-reference)
                       for Envoy. Added in v1.6.2.<br><br>
                       Exposing paths through Envoy enables a service to protect itself by only listening on localhost, while still allowing
                       non-Connect-enabled applications to contact an HTTP endpoint.
                       Some examples include: exposing a \`/metrics\` path for Prometheus or \`/healthz\` for kubelet liveness checks.`,
       children: [
         {
-          key: 'Checks',
+          name: 'Checks',
           type: 'bool: false',
           description: `If enabled, all HTTP and gRPC checks registered with the agent are exposed through Envoy.
         Envoy will expose listeners for these checks and will only accept connections originating from localhost or Consul's
-        <a href="/docs/agent/options#advertise">advertise address</a>. The port for these listeners are dynamically allocated from
-        <a href="/docs/agent/options#expose_min_port">expose_min_port</a> to <a href="docs/agent/options#expose_max_port">expose_max_port</a>.
+        [advertise address](/docs/agent/options#advertise). The port for these listeners are dynamically allocated from
+        [expose_min_port](/docs/agent/options#expose_min_port) to [expose_max_port](/docs/agent/options#expose_max_port).
         This flag is useful when a Consul client cannot reach registered services over localhost. One example is when running
         Consul on Kubernetes, and Consul agents run in their own pods.`,
         },
         {
-          key: 'Paths',
+          name: 'Paths',
           type: 'array<Path>: []',
           description: 'A list of paths to expose through Envoy.',
           children: [
             {
-              key: 'Path',
+              name: 'Path',
               type: 'string: ""',
               description:
                 'The HTTP path to expose. The path must be prefixed by a slash. ie: `/metrics`.',
             },
             {
-              key: 'LocalPathPort',
+              name: 'LocalPathPort',
               type: 'int: 0',
               description:
                 'The port where the local service is listening for connections to the path.',
             },
             {
-              key: 'ListenerPort',
+              name: 'ListenerPort',
               type: 'int: 0',
               description: `The port where the proxy will listen for connections. This port must be available
            for the listener to be set up. If the port is not free then Envoy will not expose a listener for the path,
            but the proxy registration will not fail.`,
             },
             {
-              key: 'Protocol',
+              name: 'Protocol',
               type: 'string: "http"',
               description:
                 'Sets the protocol of the listener. One of `http` or `http2`. For gRPC use `http2`.',

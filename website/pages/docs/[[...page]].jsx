@@ -5,10 +5,10 @@ import {
   generateStaticPaths,
   generateStaticProps,
 } from '@hashicorp/react-docs-page/server'
-import ConfigEntrySpec from 'components/config-entry-spec'
+import ConfigEntryReference from 'components/config-entry-reference'
 
 const subpath = 'docs'
-const additionalComponents = {ConfigEntrySpec}
+const additionalComponents = {ConfigEntryReference}
 
 export default function DocsLayout(props) {
   return (

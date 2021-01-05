@@ -100,7 +100,7 @@ function renderKey(key, isHCLTab) {
 
   let htmlDescription = ''
   if (description !== '') {
-    htmlDescription = markdownToHtml('- ' + description)
+    htmlDescription = markdownToHtml(' - ' + description)
   }
 
   let type = ''

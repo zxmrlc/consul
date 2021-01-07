@@ -181,305 +181,210 @@ to be deleted since that would put Consul into a broken state.
 In order to delete the `ServiceDefaults` config, you would need to first delete
 the `ServiceSplitter`.
 
-## Specifications
+## Kubernetes Namespaces
 
-### ProxyDefaults
+### Consul OSS
 
-A [proxy-defaults](/docs/agent/config-entries/proxy-defaults)
-entry configures global defaults across all proxies.
+Consul Open Source (Consul OSS) ignores Kubernetes namespaces and registers all services into the same
+global Consul registry based on their names. For example, service `web` in Kubernetes namespace
+`web-ns` and service `admin` in Kubernetes namespace `admin-ns` will be registered into
+Consul as `web` and `admin` with the Kubernetes source namespace ignored.
 
-```yaml
-apiVersion: consul.hashicorp.com/v1alpha1
-kind: ProxyDefaults
-metadata:
-  name: global
-spec:
-  config:
-    envoy_tracing_json: '{"http":{"config":{"collector_cluster":"jaeger_9411","collector_endpoint":"/api/v2/spans"},"name":"envoy.zipkin"}}'
-  expose:
-    checks: true
-    paths:
-      - listenerPort: 80
-        localPathPort: 42
-        path: /test/path
-        protocol: http
-      - listenerPort: 8080
-        localPathPort: 4201
-        path: /root/test/path
-        protocol: http2
-  meshGateway:
-    mode: local
-```
-
-Notes:
-
-1. There can only be one `ProxyDefaults` resource and its name **must** be `global`.
-1. Keys under `spec.config` will need to use `snake_case`, not `camelCase`, because
-   this config is passed directly to Envoy which uses `snake_case`, e.g.
-   ```yaml
-   spec:
-     config:
-       envoy_statsd_url: 'udp://127.0.0.1:8125'
-   ```
-1. See [proxy-defaults](/docs/agent/config-entries/proxy-defaults) for full
-   documentation on this config entry.
-
-### ServiceDefaults
-
-A [service-defaults](/docs/agent/config-entries/service-defaults)
-entry configures a specific service.
+When creating custom resources to configure these services, the namespace of the
+custom resource is also ignored. For example, you can create a `ServiceDefaults`
+custom resource for service `web` in the Kubernetes namespace `admin-ns` even though
+the `web` service is actually running in the `web-ns` namespace (although this is not recommended):
 
 ```yaml
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceDefaults
 metadata:
-  name: your-service-name
+  name: web
+  namespace: admin-ns
 spec:
-  protocol: https
-  meshGateway:
-    mode: local
-  expose:
-    checks: true
-    paths:
-      - listenerPort: 80
-        path: /path
-        localPathPort: 9000
-        protocol: http
-      - listenerPort: 8080
-        path: /another-path
-        localPathPort: 9091
-        protocol: http2
-  externalSNI: external-sni
+  protocol: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: web-ns
+spec: ...
 ```
 
-Notes:
+~> **NOTE:** If two custom resources of the same kind **and** the same name are attempted to
+be created in different Kubernetes namespaces, the last one created will not be synced.
 
-1. The name of the service that this `ServiceDefaults` configures is set by
-   `metadata.name`.
-1. See [service-defaults](/docs/agent/config-entries/service-defaults) for full
-   documentation on this config entry.
+#### ServiceIntentions Special Case
 
-### ServiceIntentions
-
-A [service-intentions](/docs/agent/config-entries/service-intentions)
-entry configures traffic authorization for a destination service.
+`ServiceIntentions` are different from the other custom resources because the
+name of the resource doesn't matter. For other resources, the name of the resource
+determines which service it configures. For example, this resource configures
+the service `web`:
 
 ```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: web
+spec:
+  protocol: http
+```
+
+For `ServiceIntentions`, because we need to support the ability to create
+wildcard intentions (e.g. `foo => * (allow)` meaning that `foo` can talk to **any** service),
+and because `*` is not a valid Kubernetes resource name, we instead use the field `spec.destination.name`
+to configure the destination service for the intention:
+
+```yaml
+# foo => * (allow)
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceIntentions
 metadata:
-  name: my-intention
+  name: name-does-not-matter
 spec:
   destination:
-    name: your-service-name
+    name: '*'
   sources:
-    - name: svc1
-      namespace: test
+    - name: foo
       action: allow
-      permissions: []
-      description: allow access from svc1
-    - name: '*'
-      namespace: not-test
-      action: deny
-      permissions: []
-      description: disallow access from namespace not-test
-    - name: svc-2
-      namespace: bar
-      action: ''
-      permissions:
-        - action: allow
-          http:
-            pathExact: /foo
-            pathPrefix: /bar
-            pathRegex: /baz
-            header:
-              - name: header
-                present: true
-                exact: exact
-                prefix: prefix
-                suffix: suffix
-                regex: regex
-                invert: true
-            methods:
-              - GET
-              - PUT
-      description: an L7 config
+---
+# foo => web (allow)
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: name-does-not-matter
+spec:
+  destination:
+    name: web
+  sources:
+    - name: foo
+      action: allow
 ```
 
-Notes:
+~> **NOTE:** If two `ServiceIntentions` resources set the same `spec.destination.name`, the
+last one created will not be synced.
 
-1. This resource is only supported in Consul 1.9.0.
-1. **Unlike the other configuration entries**, the value of `metadata.name` does not
-   define which service the intention applies to.
-   Instead, the name of the service this intention
-   is configuring is set in `spec.destination.name`.
+### Consul Enterprise <EnterpriseAlert inline />
 
-   The `metadata.name` field can be set to any value,
-   however, we recommend setting it to the name of the destination service the
-   intention is configuring.
+Consul Enterprise supports multiple configurations for how Kubernetes namespaces are mapped
+to Consul namespaces. The Consul namespace that the custom resource is registered
+into depends on the configuration being used but in general, you should create your
+custom resources in the same Kubernetes namespace as the service they're configuring and
+everything will work as expected.
 
-1. Wildcard intentions can be created by setting `spec.destination.name` to `*` and/or
-   `spec.sources[].name` to `*`. For example to create a `deny` intention that applies
-   to all services:
+The details on each configuration are:
+
+1. **Mirroring** - The Kubernetes namespace will be "mirrored" into Consul, i.e.
+   service `web` in Kubernetes namespace `web-ns` will be registered as service `web`
+   in the Consul namespace `web-ns`. In the same vein, a `ServiceDefaults` custom resource with
+   name `web` in Kubernetes namespace `web-ns` will configure that same service.
+
+   This is configured via [`connectInject.consulNamespaces`](/docs/k8s/helm#v-connectinject-consulnamespaces):
 
    ```yaml
-   apiVersion: consul.hashicorp.com/v1alpha1
-   kind: ServiceIntentions
-   metadata:
-    name: deny-all
-   spec:
-    destination:
-      name: *
-    sources:
-      - name: *
-        action: deny
+   global:
+     name: consul
+     enableConsulNamespaces: true
+     image: hashicorp/consul-enterprise:<tag>-ent
+   connectInject:
+     consulNamespaces:
+       mirroringK8S: true
    ```
 
-1. See [service-intentions](/docs/agent/config-entries/service-intentions) for full
-   documentation on this config entry.
+1. **Mirroring with prefix** - The Kubernetes namespace will be "mirrored" into Consul
+   with a prefix added to the Consul namespace, i.e.
+   if the prefix is `k8s-` then service `web` in Kubernetes namespace `web-ns` will be registered as service `web`
+   in the Consul namespace `k8s-web-ns`. In the same vein, a `ServiceDefaults` custom resource with
+   name `web` in Kubernetes namespace `web-ns` will configure that same service.
 
-### ServiceResolver
+   This is configured via [`connectInject.consulNamespaces`](/docs/k8s/helm#v-connectinject-consulnamespaces):
 
-A [service-resolver](/docs/agent/config-entries/service-resolver)
-entry configures which service instances should satisfy Connect upstream discovery requests for a given service name.
+   ```yaml
+   global:
+     name: consul
+     enableConsulNamespaces: true
+     image: hashicorp/consul-enterprise:<tag>-ent
+   connectInject:
+     consulNamespaces:
+       mirroringK8S: true
+       mirroringK8SPrefix: k8s-
+   ```
 
-```yaml
-apiVersion: consul.hashicorp.com/v1alpha1
-kind: ServiceResolver
-metadata:
-  name: your-service-name
-spec:
-  defaultSubset: default_subset
-  subsets:
-    subset1:
-      filter: filter1
-      onlyPassing: true
-    subset2:
-      filter: filter2
-  redirect:
-    service: redirect
-    serviceSubset: redirect_subset
-    namespace: redirect_namespace
-    datacenter: redirect_datacenter
-  failover:
-    failover1:
-      service: failover1
-      serviceSubset: failover_subset1
-      namespaces: failover_namespace1
-      datacenters:
-        - failover1_dc1
-        - failover1_dc2
-    failover2:
-      service: failover2
-      serviceSubset: failover_subset2
-      namespaces: failover_namespace2
-      datacenters:
-        - failover2_dc1
-        - failover2_dc2
-  connectTimeout: 1000000000
-  loadBalancer:
-    policy: policy
-    ringHashConfig:
-      minimumRingSize: 1
-      maximumRingSize: 2
-    leastRequestConfig:
-      choiceCount: 1
-    hashPolicies:
-      - field: field
-        fieldValue: value
-        cookieConfig:
-          session: true
-          ttl: 1
-          path: path
-        sourceIP: true
-        terminal: true
-```
+1. **Single destination namespace** - The Kubernetes namespace is ignored and all services
+   will be registered into the same Consul namespace, i.e. if the destination Consul
+   namespace is `my-ns` then service `web` in Kubernetes namespace `web-ns` will
+   be registered as service `web` in Consul namespace `my-ns`.
 
-Notes:
+   In this configuration, the Kubernetes namespace of the custom resource is ignored.
+   For example, a `ServiceDefaults` custom resource with the name `web` in Kubernetes
+   namespace `admin-ns` will configure the service with name `web` even though that
+   service is running in Kubernetes namespace `web-ns` because the `ServiceDefaults`
+   resource ends up registered into the same Consul namespace `my-ns`.
 
-1. The name of the service that this `ServiceResolver` configures is set by
-   `metadata.name`.
-1. See [service-resolver](/docs/agent/config-entries/service-resolver) for full
-   documentation on this config entry.
+   This is configured via [`connectInject.consulNamespaces`](/docs/k8s/helm#v-connectinject-consulnamespaces):
 
-### ServiceRouter
+   ```yaml
+   global:
+     name: consul
+     enableConsulNamespaces: true
+     image: hashicorp/consul-enterprise:<tag>-ent
+   connectInject:
+     consulNamespaces:
+       consulDestinationNamespace: 'my-ns'
+   ```
 
-A [service-router](/docs/agent/config-entries/service-router)
-entry configures traffic routing and manipulation at networking layer 7 (e.g. HTTP).
+   ~> **NOTE:** In this configuration, if two custom resources of the same kind **and** the same name are attempted to
+   be created in two Kubernetes namespaces, the last one created will not be synced.
+
+#### ServiceIntentions Special Case (Enterprise)
+
+`ServiceIntentions` are different from the other custom resources because the
+name of the resource doesn't matter. For other resources, the name of the resource
+determines which service it configures. For example, this resource configures
+the service `web`:
 
 ```yaml
 apiVersion: consul.hashicorp.com/v1alpha1
-kind: ServiceRouter
+kind: ServiceDefaults
 metadata:
-  name: your-service-name
+  name: web
 spec:
-  routes:
-    - match:
-        http:
-          pathExact: pathExact
-          pathPrefix: pathPrefix
-          pathRegex: pathRegex
-          header:
-            - name: name
-              present: true
-              exact: exact
-              prefix: prefix
-              suffix: suffix
-              regex: regex
-              invert: true
-          queryParam:
-            - name: name
-              present: true
-              exact: exact
-              regex: regex
-          methods:
-            - method1
-            - method2
-      destination:
-        service: service
-        serviceSubset: serviceSubset
-        namespace: namespace
-        prefixRewrite: prefixRewrite
-        requestTimeout: 1000000000
-        numRetries: 1
-        retryOnConnectFailure: true
-        retryOnStatusCodes:
-          - 500
-          - 400
+  protocol: http
 ```
 
-Notes:
-
-1. The name of the service that this `ServiceRouter` configures is set by
-   `metadata.name`.
-1. See [service-router](/docs/agent/config-entries/service-router) for full
-   documentation on this config entry.
-
-### ServiceSplitter
-
-A [service-splitter](/docs/agent/config-entries/service-splitter)
-entry configures splitting incoming requests across different subsets of a single service.
+For `ServiceIntentions`, because we need to support the ability to create
+wildcard intentions (e.g. `foo => * (allow)` meaning that `foo` can talk to **any** service),
+and because `*` is not a valid Kubernetes resource name, we instead use the field `spec.destination.name`
+to configure the destination service for the intention:
 
 ```yaml
+# foo => * (allow)
 apiVersion: consul.hashicorp.com/v1alpha1
-kind: ServiceSplitter
+kind: ServiceIntentions
 metadata:
-  name: your-service-name
+  name: name-does-not-matter
 spec:
-  splits:
-    - weight: 25.5
-      service: foo
-      serviceSubset: v1
-      namespace: baz
-    - weight: 74.5
-      service: foo
-      serviceSubset: v2
-      namespace: baz
+  destination:
+    name: '*'
+  sources:
+    - name: foo
+      action: allow
+---
+# foo => web (allow)
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: name-does-not-matter
+spec:
+  destination:
+    name: web
+  sources:
+    - name: foo
+      action: allow
 ```
 
-Notes:
-
-1. The name of the service that this `ServiceSplitter` configures is set by
-   `metadata.name`.
-1. See [service-splitter](/docs/agent/config-entries/service-splitter) for full
-   documentation on this config entry.
+In addition, we support the field `spec.destination.namespace` to configure
+the destination service's Consul namespace. If `spec.destination.namespace`
+is empty, then the Consul namespace used will be the same as the other
+config entries as outlined above.

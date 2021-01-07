@@ -70,6 +70,44 @@ Sources = [
 ]
 ```
 
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Grant some clients more REST access than others:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: api
+spec:
+  destination:
+    name: api
+  sources:
+    - name: admin-dashboard
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: /v2
+            methods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD']
+    - name: report-generator
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: /v2/widgets
+            methods: ['GET']
+    # NOTE: a default catch-all based on the default ACL policy will apply to
+    # unmatched connections and requests. Typically this will be DENY.
+```
+
+</Tab>
+</Tabs>
+
+### gRPC
+
+<Tabs>
+<Tab heading="HCL">
+
 Selectively deny some gRPC service methods. Since gRPC method calls [are
 HTTP/2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), we can
 use an HTTP path match rule to control traffic:
@@ -113,6 +151,50 @@ Sources = [
   # unmatched connections and requests. Typically this will be DENY.
 ]
 ```
+
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Selectively deny some gRPC service methods. Since gRPC method calls [are
+HTTP/2](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md), we can
+use an HTTP path match rule to control traffic:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: billing
+spec:
+  destination:
+    name: billing
+  sources:
+    # The frontend website can execute all billing service methods except
+    # issuing refunds.
+    - name: frontend-web
+      permissions:
+        - action: deny
+          http:
+            pathExact: /mycompany.BillingService/IssueRefund
+        - action: allow
+          http:
+            pathPrefix: '/mycompany.BillingService/'
+    - name: support-protocol
+      # But the support team portal page can execute all methods.
+      permissions:
+        - action: allow
+          http:
+            pathPrefix: '/mycompany.BillingService/'
+    # NOTE: a default catch-all based on the default ACL policy will apply to
+    # unmatched connections and requests. Typically this will be DENY.
+```
+
+</Tab>
+</Tabs>
+
+### L4 and L7
+
+<Tabs>
+<Tab heading="HCL">
 
 You can mix and match L4 and L7 intentions per source:
 
@@ -159,11 +241,88 @@ Sources = [
 
 - `Meta` `(map<string|string>: nil)` - Specifies arbitrary KV metadata pairs.
 
-- `Sources` `(array<SourceIntention>)` - The list of all [intention sources and
-  the authorization granted to those sources](#sourceintention). The order of
-  this list does not matter, but out of convenience Consul will always store
-  this reverse sorted by intention precedence, as that is the order that they
-  will be evaluated at enforcement time.
+<ConfigEntryReference
+  keys={[
+    {
+      name: 'apiVersion',
+      description: 'Must be set to `consul.hashicorp.com/v1alpha1`',
+      hcl: false,
+    },
+    {
+      name: 'Kind',
+      description: {
+        hcl: 'Must be set to `service-intentions`',
+        yaml: 'Must be set to `ServiceIntentions`',
+      },
+    },
+    {
+      name: 'Name',
+      description:
+        "The name of the destination service for all intentions defined in this config entry. This may be set to the wildcard character (`*`) to match all services that don't otherwise have intentions defined.",
+      type: 'string: <required>',
+      yaml: false,
+    },
+    {
+      name: 'Namespace',
+      type: `string: "default"`,
+      enterprise: true,
+      description:
+        "Specifies the namespaces the config entry will apply to. This may be set to the wildcard character (`*`) to match all services in all namespaces that don't otherwise have intentions defined.",
+      yaml: false,
+    },
+    {
+      name: 'Meta',
+      type: 'map<string|string>: nil',
+      description: 'Specifies arbitrary KV metadata pairs.',
+      yaml: false,
+    },
+    {
+      name: 'metadata',
+      children: [
+        {
+          name: 'name',
+          description:
+            'Unlike other config entries, the `metadata.name` field is not used to set the name of the service being configured. Instead, that is set in `spec.destination.name`. Thus this name can be set to anything. See [ServiceIntentions Special Case (OSS)](/docs/k8s/crds#serviceintentions-special-case) or [ServiceIntentions Special Case (Enterprise)](/docs/k8s/crds#serviceintentions-special-case-enterprise) for more details.',
+        },
+        {
+          name: 'namespace',
+          description:
+            'If running Consul Open Source, the namespace is ignored (see [Kubernetes Namespaces in Consul OSS](/docs/k8s/crds#consul-oss)). If running Consul Enterprise see [Kubernetes Namespaces in Consul Enterprise](/docs/k8s/crds#consul-enterprise) for more details.',
+        },
+      ],
+      hcl: false,
+    },
+    {
+      name: 'destination',
+      hcl: false,
+      children: [
+        {
+          name: 'name',
+          hcl: false,
+          type: 'string: <required>',
+          description:
+            "The name of the destination service for all intentions defined in this config entry. This may be set to the wildcard character (`*`) to match all services that don't otherwise have intentions defined.",
+        },
+        {
+          name: 'namespace',
+          hcl: false,
+          enterprise: true,
+          type: 'string: <optional>',
+          description:
+            "Specifies the namespaces the config entry will apply to. This may be set to the wildcard character (`*`) to match all services in all namespaces that don't otherwise have intentions defined. If not set, the namespace used will depend on the `connectInject.consulNamespaces` configuration. See [ServiceIntentions Special Case (Enterprise)](/docs/k8s/crds#serviceintentions-special-case-enterprise) for more details.",
+        },
+      ],
+    },
+    {
+      name: 'Sources',
+      type: 'array<SourceIntention>',
+      description: `The list of all [intention sources and the authorization granted to those sources](#sourceintention). The order of
+        this list does not matter, but out of convenience Consul will always store
+        this reverse sorted by intention precedence, as that is the order that they
+        will be evaluated at enforcement time.`,
+    },
+  ]}
+/>
 
 ### `SourceIntention`
 

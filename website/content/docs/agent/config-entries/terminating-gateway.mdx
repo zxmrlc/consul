@@ -398,44 +398,122 @@ and configure default certificates for mutual TLS. Also override the SNI and CA 
 
 ## Available Fields
 
-- `Kind` - Must be set to `terminating-gateway`
-
-- `Name` `(string: <required>)` - Set to the name of the gateway being configured.
-
-- `Namespace` `(string: "default")` - <EnterpriseAlert inline /> Specifies the namespace
-  the config entry will apply to. This must be the namespace the gateway is registered in.
-  If omitted, the namespace will be inherited from [the request](/api/config#ns)
-  or will default to the `default` namespace.
-
-- `Meta` `(map<string|string>: nil)` - Specifies arbitrary KV metadata pairs. Added in Consul 1.8.4.
-
-- `Services` `(array<LinkedService>: <optional>)` - A list of services to link
-  with the gateway. The gateway will proxy traffic to these services. These linked services
-  must be registered with Consul for the gateway to discover their addresses. They must also
-  be registered in the same Consul datacenter as the terminating gateway.
-
-  - `Name` `(string: "")` - The name of the service to link with the gateway.
-    If the wildcard specifier, `*`, is provided, then ALL services within the namespace
-    will be linked with the gateway.
-
-  - `Namespace` `(string: "")` - <EnterpriseAlert inline /> The namespace of the service.
-    If omitted, the namespace will be inherited from the config entry.
-
-  - `CAFile` `(string: "")` - A file path to a PEM-encoded certificate authority.
-    The file must be present on the proxy's filesystem.
-    The certificate authority is used to verify the authenticity of the service linked with the gateway.
-    It can be provided along with a CertFile and KeyFile for mutual TLS authentication, or on its own
-    for one-way TLS authentication. If none is provided the gateway **will not** encrypt the traffic to the destination.
-
-  - `CertFile` `(string: "")` - A file path to a PEM-encoded certificate.
-    The file must be present on the proxy's filesystem.
-    The certificate is provided servers to verify the gateway's authenticity. It must be provided if a KeyFile was specified.
-
-  - `KeyFile` `(string: "")` - A file path to a PEM-encoded private key.
-    The file must be present on the proxy's filesystem.
-    The key is used with the certificate to verify the gateway's authenticity. It must be provided along if a CertFile was specified.
-
-  - `SNI` `(string: "")` - An optional hostname or domain name to specify during the TLS handshake.
+<ConfigEntryReference
+  keys={[
+    {
+      name: 'apiVersion',
+      description: 'Must be set to `consul.hashicorp.com/v1alpha1`',
+      hcl: false,
+    },
+    {
+      name: 'Kind',
+      description: {
+        hcl: 'Must be set to `terminating-gateway`',
+        yaml: 'Must be set to `TerminatingGateway`',
+      },
+    },
+    {
+      name: 'Name',
+      description: 'Set to the name of the gateway being configured.',
+      type: 'string: <required>',
+      yaml: false,
+    },
+    {
+      name: 'Namespace',
+      type: `string: "default"`,
+      enterprise: true,
+      description:
+        'Specifies the namespace the config entry will apply to. This must be the namespace the gateway is registered in.' +
+        ' If omitted, the namespace will be inherited from [the request](/api/config#ns)' +
+        ' or will default to the `default` namespace.',
+      yaml: false,
+    },
+    {
+      name: 'Meta',
+      type: 'map<string|string>: nil',
+      description:
+        'Specifies arbitrary KV metadata pairs. Added in Consul 1.8.4.',
+      yaml: false,
+    },
+    {
+      name: 'metadata',
+      children: [
+        {
+          name: 'name',
+          description: 'Set to the name of the gateway being configured.',
+        },
+        {
+          name: 'namespace',
+          description:
+            'If running Consul Open Source, the namespace is ignored (see [Kubernetes Namespaces in Consul OSS](/docs/k8s/crds#consul-oss)). If running Consul Enterprise see [Kubernetes Namespaces in Consul Enterprise](/docs/k8s/crds#consul-enterprise) for more details.',
+        },
+      ],
+      hcl: false,
+    },
+    {
+      name: 'Services',
+      type: 'array<LinkedService>: <optional>',
+      description: `A list of services to link
+                      with the gateway. The gateway will proxy traffic to these services. These linked services
+                      must be registered with Consul for the gateway to discover their addresses. They must also
+                      be registered in the same Consul datacenter as the terminating gateway.`,
+      children: [
+        {
+          name: 'Name',
+          type: 'string: ""',
+          description:
+            'The name of the service to link with the gateway. If the wildcard specifier, `*`, is provided, then ALL services within the namespace will be linked with the gateway.',
+        },
+        {
+          name: 'Namespace',
+          enterprise: true,
+          type: 'string: ""',
+          description:
+            'The namespace of the service. If omitted, the namespace will be inherited from the config entry.',
+        },
+        {
+          name: 'CAFile',
+          type: 'string: ""',
+          description: `A file path to a PEM-encoded certificate authority.
+                            The file must be present on the proxy's filesystem.
+                            The certificate authority is used to verify the authenticity of the service linked with the gateway.
+                            It can be provided along with a CertFile and KeyFile for mutual TLS authentication, or on its own
+                            for one-way TLS authentication. If none is provided the gateway <b>will not</b> encrypt the traffic to the destination.`,
+        },
+        {
+          name: 'CertFile',
+          type: 'string: ""',
+          description: {
+            hcl: `A file path to a PEM-encoded certificate.
+                            The file must be present on the proxy's filesystem.
+                            The certificate is provided servers to verify the gateway's authenticity. It must be provided if a \`KeyFile\` was specified.`,
+            yaml: `A file path to a PEM-encoded certificate.
+                            The file must be present on the proxy's filesystem.
+                            The certificate is provided servers to verify the gateway's authenticity. It must be provided if a \`keyFile\` was specified.`,
+          },
+        },
+        {
+          name: 'KeyFile',
+          type: 'string: ""',
+          description: {
+            hcl: `A file path to a PEM-encoded private key.
+                      The file must be present on the proxy's filesystem.
+                      The key is used with the certificate to verify the gateway's authenticity. It must be provided along if a \`CertFile\` was specified.`,
+            yaml: `A file path to a PEM-encoded private key.
+                      The file must be present on the proxy's filesystem.
+                      The key is used with the certificate to verify the gateway's authenticity. It must be provided along if a \`certFile\` was specified.`,
+          },
+        },
+        {
+          name: 'SNI',
+          type: 'string: ""',
+          description:
+            'An optional hostname or domain name to specify during the TLS handshake.',
+        },
+      ],
+    },
+  ]}
+/>
 
 ## ACLs
 

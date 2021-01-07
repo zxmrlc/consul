@@ -9,10 +9,18 @@ description: >-
 
 # Service Defaults
 
-The `service-defaults` config entry kind controls default global values for a
+-> **v1.8.4+:** On Kubernetes, the `ServiceDefaults` custom resource is supported in Consul versions 1.8.4+.<br />
+**v1.5.0+:** On other platforms, this config entry is supported in Consul versions 1.5.0+.
+
+The `service-defaults` config entry kind (`ServiceDefaults` on Kubernetes) controls default global values for a
 service, such as its protocol.
 
 ## Sample Config Entries
+
+### Default protocol
+
+<Tabs>
+<Tab heading="HCL">
 
 Set the default protocol for a service in the default namespace to HTTP:
 
@@ -22,6 +30,23 @@ Name      = "web"
 Namespace = "default"
 Protocol  = "http"
 ```
+
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Set the default protocol for a service in the default namespace to HTTP:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: web
+spec:
+  protocol: http
+```
+
+</Tab>
+</Tabs>
 
 ## Available Fields
 

@@ -9,9 +9,10 @@ description: >-
 
 # Service Resolver
 
--> **1.6.0+:** This config entry is available in Consul versions 1.6.0 and newer.
+-> **v1.8.4+:** On Kubernetes, the `ServiceResolver` custom resource is supported in Consul versions 1.8.4+.<br />
+**v1.6.0+:** On other platforms, this config entry is supported in Consul versions 1.6.0+.
 
-The `service-resolver` config entry kind controls which service instances
+The `service-resolver` config entry kind (`ServiceResolver` on Kubernetes) controls which service instances
 should satisfy Connect upstream discovery requests for a given service name.
 
 If no resolver config is defined the chain assumes 100% of traffic goes to the
@@ -24,6 +25,11 @@ and discovery terminates.
   Management](/docs/connect/l7-traffic-management).
 
 ## Sample Config Entries
+
+### Filter on service version
+
+<Tabs>
+<Tab heading="HCL">
 
 Create service subsets based on a version metadata and override the defaults:
 
@@ -41,6 +47,33 @@ Subsets = {
 }
 ```
 
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Create service subsets based on a version metadata and override the defaults:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: web
+spec:
+  defaultSubset: 'v1'
+  subsets:
+    'v1':
+      filter: 'Service.Meta.version == v1'
+    'v2':
+      filter: 'Service.Meta.version == v2'
+```
+
+</Tab>
+</Tabs>
+
+### Other datacenters
+
+<Tabs>
+<Tab heading="HCL">
+
 Expose a set of services in another datacenter as a virtual service:
 
 ```hcl
@@ -51,6 +84,30 @@ Redirect {
   Datacenter = "dc2"
 }
 ```
+
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Expose a set of services in another datacenter as a virtual service:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: web-dc2
+spec:
+  redirect:
+    service: web
+    datacenter: dc2
+```
+
+</Tab>
+</Tabs>
+
+### Datacenter failover
+
+<Tabs>
+<Tab heading="HCL">
 
 Enable failover for all subsets:
 
@@ -65,12 +122,30 @@ Failover = {
 }
 ```
 
-Representation of the defaults when a resolver is not configured:
+</Tab>
+<Tab heading="Kubernetes YAML">
 
-```hcl
-Kind = "service-resolver"
-Name = "web"
+Enable failover for all subsets:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: web
+spec:
+  connectTimeout: 15s
+  failover:
+    '*':
+      datacenters: ['dc3', 'dc4']
 ```
+
+</Tab>
+</Tabs>
+
+### Consistent load balancing
+
+<Tabs>
+<Tab heading="HCL">
 
 Apply consistent load balancing for requests based on `x-user-id` header:
 
@@ -89,15 +164,28 @@ LoadBalancer = {
 }
 ```
 
+</Tab>
+<Tab heading="Kubernetes YAML">
+
+Apply consistent load balancing for requests based on `x-user-id` header:
+
+```yaml
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: web
+spec:
+  loadBalancer:
+    policy: maglev
+    hashPolicies:
+      - field: header
+        fieldValue: x-user-id
+```
+
+</Tab>
+</Tabs>
+
 ## Available Fields
-
-- `Kind` - Must be set to `service-resolver`
-
-- `Name` `(string: <required>)` - Set to the name of the service being configured.
-
-- `Namespace` `(string: "default")` <EnterpriseAlert inline /> - Specifies the namespace the config entry will apply to.
-
-- `Meta` `(map<string|string>: nil)` - Specifies arbitrary KV metadata pairs. Added in Consul 1.8.4.
 
 <ConfigEntryReference
   keys={[

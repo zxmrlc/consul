@@ -279,6 +279,7 @@ func (m *Materializer) Fetch(done <-chan struct{}, opts cache.FetchOptions) (cac
 			return result, nil
 
 		case <-done:
+			result.Value = nil
 			return result, context.Canceled
 		}
 	}

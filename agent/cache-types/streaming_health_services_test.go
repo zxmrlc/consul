@@ -1,6 +1,7 @@
 package cachetype
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -567,4 +569,95 @@ func runStep(t *testing.T, name string, fn func(t *testing.T)) {
 	if !t.Run(name, fn) {
 		t.FailNow()
 	}
+}
+
+func TestStreamingHealthServices_IntegrationWithCache_Expiry(t *testing.T) {
+	namespace := getNamespace("ns2")
+
+	snapshotEvents := []*pbsubscribe.Event{
+		newEventServiceHealthRegister(5, 1, "web"),
+		newEndOfSnapshotEvent(5),
+	}
+	client := newReconnectStreamingClient(namespace, snapshotEvents)
+	typ := StreamingHealthServices{deps: MaterializerDeps{
+		Client: client,
+		Logger: hclog.Default(),
+	}}
+
+	c := cache.New(cache.Options{})
+	c.RegisterType(StreamingHealthServicesName, &shortTTL{typ})
+
+	req := &structs.ServiceSpecificRequest{
+		Datacenter:     "dc1",
+		ServiceName:    "web",
+		EnterpriseMeta: structs.EnterpriseMetaInitializer(namespace),
+	}
+	req.MinQueryIndex = 1
+	req.MaxQueryTime = time.Second
+
+	ctx := context.Background()
+
+	runStep(t, "initial fetch of results", func(t *testing.T) {
+		_, meta, err := c.Get(ctx, StreamingHealthServicesName, req)
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), meta.Index)
+
+		req.MinQueryIndex = meta.Index
+	})
+
+	runStep(t, "request should block, and hit the cache TTL", func(t *testing.T) {
+		_, _, err := c.Get(ctx, StreamingHealthServicesName, req)
+		require.Error(t, err)
+		//require.Equal(t, uint64(5), meta.Index)
+		//req.MinQueryIndex = meta.Index
+	})
+
+	runStep(t, "the next request should succeed", func(t *testing.T) {
+		time.Sleep(40 * time.Millisecond) // TODO: remove sleep
+		_, meta, err := c.Get(ctx, StreamingHealthServicesName, req)
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), meta.Index)
+	})
+}
+
+type shortTTL struct {
+	StreamingHealthServices
+}
+
+func (s *shortTTL) RegisterOptions() cache.RegisterOptions {
+	opts := s.RegisterOptionsBlockingRefresh.RegisterOptions()
+	opts.LastGetTTL = 10 * time.Millisecond
+	return opts
+}
+
+type reconnectStreamingClient struct {
+	TestStreamingClient
+	snapshotEvents []*pbsubscribe.Event
+}
+
+func newReconnectStreamingClient(ns string, events []*pbsubscribe.Event) *reconnectStreamingClient {
+	return &reconnectStreamingClient{
+		TestStreamingClient: TestStreamingClient{
+			events:            make(chan eventOrErr, 32),
+			expectedNamespace: ns,
+		},
+		snapshotEvents: events,
+	}
+}
+
+func (t *reconnectStreamingClient) Subscribe(
+	ctx context.Context,
+	req *pbsubscribe.SubscribeRequest,
+	_ ...grpc.CallOption,
+) (pbsubscribe.StateChangeSubscription_SubscribeClient, error) {
+	fmt.Println("Subscribe called")
+	if req.Namespace != t.expectedNamespace {
+		return nil, fmt.Errorf("wrong SubscribeRequest.Namespace %v, expected %v",
+			req.Namespace, t.expectedNamespace)
+	}
+	t.ctx = ctx
+	// TODO: this almost definitely races, fix
+	t.events = make(chan eventOrErr, 32)
+	t.QueueEvents(t.snapshotEvents...)
+	return t, nil
 }

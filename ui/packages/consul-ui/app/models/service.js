@@ -1,6 +1,7 @@
 import Model, { attr } from '@ember-data/model';
 import { computed } from '@ember/object';
 import { tracked } from '@glimmer/tracking';
+import { nullValue } from 'consul-ui/decorators/replace';
 
 export const PRIMARY_KEY = 'uid';
 export const SLUG_KEY = 'Name';
@@ -20,7 +21,6 @@ export const Collection = class Collection {
     return [...new Set(sources)].filter(Boolean).sort();
   }
 };
-
 export default class Service extends Model {
   @attr('string') uid;
   @attr('string') Name;
@@ -37,12 +37,13 @@ export default class Service extends Model {
   @attr('number') SyncTime;
   @attr('number') CreateIndex;
   @attr('number') ModifyIndex;
-  @attr({ defaultValue: () => [] }) Tags;
+
+  @nullValue([]) @attr({ defaultValue: () => [] }) Tags;
 
   @attr() Nodes; // array
   @attr() Proxy; // Service
   @attr() GatewayConfig; // {AssociatedServiceCount: 0}
-  @attr() ExternalSources; // array
+  @nullValue([]) @attr() ExternalSources; // array
   @attr() Meta; // {}
 
   @attr() meta; // {}
